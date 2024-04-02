@@ -1,0 +1,31 @@
+# System prompts
+system:  
+  anti_attack: >
+    '''
+    Dummy prompt
+    '''
+  
+  adaptor: >
+    '''
+    Dummy prompt
+    '''
+  
+  editor: >
+    '''
+    Dummy prompt
+    '''
+  
+  optimization: >
+    '''
+    Dummy prompt
+    '''
+  
+  classification: >
+    '''
+    Dummy prompt
+    '''
+  
+  qa: >
+    '''
+    Dummy prompt
+    '''
