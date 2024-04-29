@@ -29,8 +29,8 @@ llm_chain_setups:
 
 # File paths
 files:
-  log_path: ./data/virtual-havruta.log
-  pr_table_path: ./data/pr_table.csv
+  log_path: ./dummy-activity.log
+  pr_table_path: ./dummy_pagerank_table.csv
 
 # Reference Settings
 references:
