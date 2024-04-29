@@ -37,3 +37,8 @@ references:
   primary_source_filter: ['filter1', 'filter2', 'filter3']
   num_primary_citations: 1
   num_secondary_citations: 1
+
+linker_references:
+  primary_source_filter: ['filter1', 'filter2', 'filter3', 'filter4', 'filter5']
+  num_primary_citations: -1
+  num_secondary_citations: -1
