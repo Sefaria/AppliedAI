@@ -8,11 +8,12 @@ from datetime import datetime
 from langchain.vectorstores.neo4j_vector import Neo4jVector
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.chains import LLMChain
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-from langchain.callbacks import get_openai_callback
-
+from langchain_community.callbacks import get_openai_callback
+import traceback
+import requests
 
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
