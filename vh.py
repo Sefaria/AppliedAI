@@ -369,3 +369,70 @@ class VirtualHavruta:
         traverse(json_input)
         self.logger.info(f"MsgID={msg_id}. Sefaria linker document retrieval results: {results}")
         return results
+
+    def merge_linker_refs(self, retrieved_docs: list, p_sorted_src_rel_dict: dict, p_src_data_dict: dict, p_src_ref_dict: dict, msg_id: str = ''):
+        """
+        Merges new linker reference results into existing sorted source relevance dictionaries,
+        data dictionaries, and reference dictionaries.
+
+        This function is responsible for ensuring that the newly retrieved reference data from the
+        Sefaria Linker is correctly integrated with existing reference data, maintaining consistency and
+        accuracy across updates. Atomicity of updates is checked to ensure all updates occur simultaneously
+        if all conditions are met.
+
+        Parameters:
+            page_content_total (list): Contains dictionaries with page content and metadata including URL and text.
+            p_sorted_src_rel_dict (dict): Pre-existing sorted source relevance dictionary to be updated.
+            p_src_data_dict (dict): Pre-existing source data dictionary that maps URLs to text data.
+            p_src_ref_dict (dict): Pre-existing source reference dictionary that maps URLs to reference details.
+
+        Returns:
+            tuple: Updated dictionaries (p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict) after merging new references.
+            If merging is not succesful, original value is returned.
+        """
+
+        #iterating each document
+        for document in retrieved_docs:
+
+            # Extract necessary data to be written and to be checked
+            #Extracting the URL
+            new_url = 'https://www.sefaria.org/' + document['url'] if document['url'] else None
+            #Extracting the page_rank score for sorting
+            pr_score = float(document['page_rank']) if document['page_rank'] else None
+            #Extracting the Category
+            new_category = document['primaryCategory'] if document['primaryCategory'] else None
+            #Extracting the Reference Part
+            new_reference_part = document['url'] if document['url'] else None
+            new_ref = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {new_url}"
+            #Extracting the english text
+            new_text = str(document['en']) if document['en'] else None
+
+            # Update sorted source relevance dictionary if necessary fields are satisfied
+            if new_reference_part and pr_score and new_category and new_text:
+                # Commit changes if fields are satisfied
+                if new_url not in p_sorted_src_rel_dict:
+                    p_sorted_src_rel_dict = {new_url: pr_score, **p_sorted_src_rel_dict}
+                else:
+                    p_sorted_src_rel_dict[new_url] = pr_score
+                
+                if new_url not in p_src_ref_dict:
+                    p_src_ref_dict = {new_url: new_ref, **p_src_ref_dict}
+                else:
+                    if new_ref not in p_src_ref_dict[new_url]:
+                        p_src_ref_dict[new_url] += " | " + new_ref
+
+                if new_url not in p_src_data_dict:
+                    p_src_data_dict = {new_url: new_text, **p_src_data_dict}
+                else:
+                    if new_text not in p_src_data_dict[new_url]:
+                        p_src_data_dict[new_url] += "..." + new_text
+                
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+            else:
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+                
+        #sorting it by page rank score
+        p_sorted_src_rel_dict = dict(sorted(p_sorted_src_rel_dict.items(), key=lambda item: item[1], reverse=True))
+        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] \n----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} \n----p_src_data_dict: {p_src_data_dict} \n----p_src_ref_dict: {p_src_ref_dict}")
+
+        return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
