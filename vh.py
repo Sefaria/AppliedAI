@@ -298,3 +298,35 @@ class VirtualHavruta:
         situ_info = f"\n [Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')} \n"
         self.logger.info(f"MsgID={msg_id}. SITUATIONAL INFO: {situ_info}")
         return situ_info
+
+    def query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=5, msg_id: str = ''):
+        # Sefaria Linker API endpoint
+        api_url = "https://www.sefaria.org/api/find-refs"
+
+        # Assemble headers and data for the POST request
+        headers = {'Content-Type': 'application/json'}
+        
+        # Assemble the body of the POST request using a dictionary and directly pass it to requests.post
+        data = {
+            "text": {
+                "title": text_title,
+                "body": text_body,
+            }
+        }
+        
+         # Consolidate parameters, including those passed to the function
+        params = {'with_text': with_text, 'debug': debug, 'max_segments': max_segments}
+
+        try:
+            # Simplify request by directly passing a dictionary to json parameter, which requests will automatically serialize
+            response = requests.post(api_url, headers=headers, params=params, json=data)
+            self.logger.info(f"MsgID={msg_id}. Sefaria linker query response: {response}. {response.json()}.")
+            response.raise_for_status()  # Handles HTTP errors by raising an HTTPError exception for bad requests
+            # response.json() will return the JSON response for a successful request
+            return response.json()
+        except requests.HTTPError as http_err:
+            self.logger.error(f"MsgID={msg_id}. HTTP error occurred: {http_err}.") # Specific HTTP error handling
+            return f"HTTP error occurred: {http_err}"  
+        except Exception as e:
+            self.logger.error(f"MsgID={msg_id}. Error occurred during Sefaria Linker Querying: {e}.") # General error handling
+            return f"Error occurred during Sefaria Linker Querying: {e}"
