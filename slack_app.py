@@ -14,7 +14,7 @@ from slack_sdk import WebClient
 from util import create_logger, part_res
 
 # Load configurations for database, Slack, and other services
-with open("_config.yaml") as file:
+with open("config.yaml") as file:
     config = yaml.safe_load(file)
 
 # Retrieve the Slack-related parameters
