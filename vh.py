@@ -330,3 +330,42 @@ class VirtualHavruta:
         except Exception as e:
             self.logger.error(f"MsgID={msg_id}. Error occurred during Sefaria Linker Querying: {e}.") # General error handling
             return f"Error occurred during Sefaria Linker Querying: {e}"
+
+    def retrieve_docs_linker(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary'):
+        # Making a call to sefaria linker api
+        json_input = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query)
+
+        # To store documents
+        results = []
+
+        # Define predicate functions based on filter_mode
+        if filter_mode == 'primary':
+            predicate = lambda category: category in self.linker_primary_source_filter
+        elif filter_mode == 'secondary':
+            predicate = lambda category: category not in self.linker_primary_source_filter
+        else:
+            raise ValueError(f"Invalid filter_mode: {msg_id} - {filter_mode}")
+
+        # Recursive function to traverse and collect data
+        def traverse(json_data):
+            if isinstance(json_data, dict):
+                for key, value in json_data.items():
+                    if key == 'refData':
+                        # Process its children if it's 'refData'
+                        for sub_key, sub_value in value.items():
+                            # Apply the filtering predicate on the 'primaryCategory' field
+                            if 'primaryCategory' in sub_value and predicate(sub_value['primaryCategory']):
+                                # Add the page_rank to each document
+                                # PR score is initialized to 6.0 for Sefaria Linker API
+                                sub_value['page_rank'] = 6.0
+                                results.append(sub_value)
+                    elif isinstance(value, (dict, list)):
+                        # Continue search in deeper levels
+                        traverse(value)
+            elif isinstance(json_data, list):
+                for item in json_data:
+                    traverse(item)
+
+        traverse(json_input)
+        self.logger.info(f"MsgID={msg_id}. Sefaria linker document retrieval results: {results}")
+        return results
