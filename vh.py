@@ -45,7 +45,8 @@ class VirtualHavruta:
         self.primary_source_filter = refs['primary_source_filter']
         self.num_primary_citations = refs['num_primary_citations']
         self.num_secondary_citations = refs['num_secondary_citations']        
-
+        self.linker_primary_source_filter = linker_references['primary_source_filter']
+        
         # Initialize prompt templates and LLM instances
         self.initialize_prompt_templates()
         self.initialize_llm_instances()
