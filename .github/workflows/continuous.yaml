@@ -1,0 +1,80 @@
+name: Continuous
+on:
+  push:
+    paths:
+      - ".github/workflows/continuous.yaml"
+      - Dockerfile
+      - "**/*.py"
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: 'projects/${{ secrets.GKE_PROJECT_ID}}/locations/global/workloadIdentityPools/github/providers/github'
+          service_account: '${{ secrets.GKE_SA }}'
+      - name: Login to GCR
+        uses: docker/login-action@v1
+        with:
+          registry: gcr.io
+          username: oauth2accesstoken
+          password: '${{ steps.auth.outputs.access_token }}'
+      - name: Login to GAR
+        uses: docker/login-action@v1
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: '${{ steps.auth.outputs.access_token }}'
+      - name: Get branch name
+        id: branch-raw
+        uses: tj-actions/branch-names@v5.1
+      - name: Format branch name
+        id: branch-name
+        run: >-
+          echo "current_branch="$(echo ${{ steps.branch-raw.outputs.current_branch }}
+          | awk '{print tolower($0)}'
+          | sed 's|.*/\([^/]*\)/.*|\1|; t; s|.*|\0|'
+          | sed 's/[^a-z0-9\.\-]//g')
+          >> $GITHUB_OUTPUT
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            us-east1-docker.pkg.dev/${{ secrets.DEV_GKE_PROJECT }}/containers/sefaria-llm
+          # generate container tags based on the following events/attributes
+          tags: |
+            type=sha,enable=true,priority=100,prefix=${{ steps.branch-name.outputs.current_branch}}-,suffix=-${{ steps.date.outputs.date }},format=short
+            type=ref,event=branch
+            type=sha
+          flavor: |
+            latest=true
+      - name: build and push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          build-args: |
+            TYPE=build
+          file: ./Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

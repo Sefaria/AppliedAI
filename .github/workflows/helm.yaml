@@ -1,0 +1,122 @@
+name: Helm
+
+on:
+  push:
+    paths:
+      - "chart/**"
+      - ".github/workflows/helm.yaml"
+
+jobs:
+  lint:
+    name: "Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.8.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.7
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.2.1
+        with:
+          version: v3.5.1
+      - name: Lint chart
+        run: ct lint --charts chart
+
+  chart:
+    name: Release Chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to write releases
+      id-token: 'write'
+    needs:
+      - lint
+    if: |
+      (github.repository == 'Sefaria/AppliedAI')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch entire history. Required for chart-releaser; see https://github.com/helm/chart-releaser-action/issues/13#issuecomment-602063896
+          fetch-depth: 0
+      - name: fetch head of branch to ensure semantic can run
+        run: git pull origin $GITHUB_REF
+      - name: Download yq
+        run: |
+          wget -nv -nc -O yq https://github.com/mikefarah/yq/releases/download/v4.20.2/yq_linux_amd64
+          chmod +x yq
+          echo "$PWD" >> $GITHUB_PATH
+      - name: create release rules
+        run: build/chart-release-rules.sh
+      - uses: cycjimmy/semantic-release-action@v4
+        id: semantic
+        with:
+          working_directory: ./chart
+          semantic_version: 18.0.1
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@6.1.0
+            semantic-release-monorepo@7.0.5
+            @semantic-release/exec@6.0.3
+            @semantic-release/git@10.0.1
+            @semantic-release/commit-analyzer@9.0.2
+          extends: |
+            semantic-release-monorepo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup
+        shell: bash
+        run: |
+          git config --global user.name "$GITHUB_ACTOR"
+          git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
+      - name: Get chartVersion
+        id: chartVersion
+        run: |
+          if [[ -z "${{ steps.semantic.outputs.new_release_version }}" ]]; then
+            if [[ -z "$(git tag --points-at HEAD -l 'chart*')" ]]; then
+              echo "No chart version available"
+              exit 1
+            else
+              echo "chartVersion=$(git tag --points-at HEAD -l 'chart*' | sed 's/chart-//' )" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "chartVersion=${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+          fi
+      - name: Get appVersion
+        id: appVersion
+        run: |
+          echo "appVersion=$(git describe --match 'v*' --abbrev=0 HEAD --tags)" >> $GITHUB_OUTPUT
+      # All charts to gh pages
+      - name: Publish Helm charts
+        uses: stefanprodan/helm-gh-pages@master
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          chart_version: ${{ steps.semantic.outputs.new_release_version }}
+          app_version: ${{ steps.appVersion.outputs.appVersion }}
+          linting: off
+          charts_dir: "."
+      # Full charts to Prod OCI
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        if: ${{  github.ref == 'refs/heads/main' }}
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: 'projects/${{ secrets.PROD_GKE_PROJECT_ID}}/locations/global/workloadIdentityPools/github/providers/github'
+          service_account: '${{ secrets.PROD_GKE_SA }}'
+      - name: Login to GAR
+        uses: docker/login-action@v1
+        if: ${{  github.ref == 'refs/heads/main' }}
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: '${{ steps.auth.outputs.access_token }}'
+      - name: Publish to OCI
+        if: ${{  github.ref == 'refs/heads/main' }}
+        run: |
+          helm package chart
+          helm push sefaria-llm-${{ steps.chartVersion.outputs.chartVersion }}.tgz oci://us-east1-docker.pkg.dev/${{ secrets.GKE_PROJECT}}/containers/sefaria-ai/chart/
