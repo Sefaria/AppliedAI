@@ -106,8 +106,8 @@ jobs:
         if: ${{  github.ref == 'refs/heads/main' }}
         with:
           token_format: 'access_token'
-          workload_identity_provider: 'projects/${{ secrets.PROD_GKE_PROJECT_ID}}/locations/global/workloadIdentityPools/github/providers/github'
-          service_account: '${{ secrets.PROD_GKE_SA }}'
+          workload_identity_provider: 'projects/${{ secrets.GKE_PROJECT_ID}}/locations/global/workloadIdentityPools/github/providers/github'
+          service_account: '${{ secrets.GKE_SA }}'
       - name: Login to GAR
         uses: docker/login-action@v1
         if: ${{  github.ref == 'refs/heads/main' }}
@@ -119,4 +119,4 @@ jobs:
         if: ${{  github.ref == 'refs/heads/main' }}
         run: |
           helm package chart
-          helm push sefaria-llm-${{ steps.chartVersion.outputs.chartVersion }}.tgz oci://us-east1-docker.pkg.dev/${{ secrets.GKE_PROJECT}}/containers/sefaria-ai/chart/
+          helm push sefaria-ai-${{ steps.chartVersion.outputs.chartVersion }}.tgz oci://us-docker.pkg.dev/${{ secrets.GKE_PROJECT}}/gcr.io/sefaria-ai/chart/
