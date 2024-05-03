@@ -109,6 +109,18 @@ class VirtualHavruta:
         return detection, explanation, tok_count
 
     def adaptor(self, query: str, msg_id: str=''):
+        '''
+        Processes a query using a language model chain optimized for adaptation tasks, returning the adapted result along with the token count.
+
+        This function sends a query to an adaptation-specific model, which modifies the query to fit particular contexts or requirements. It retrieves the adapted text and the number of tokens used in the model's response. The function is useful for tasks requiring contextual modifications or specific formatting. It also logs each transaction with an optional message identifier, aiding in monitoring and debugging processes.
+        
+        Parameters:
+        query (str): The query string to be adapted by the model.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the adapted text (str) and the token count (int) used in generating that adapted text.
+        '''
         adp_res, tok_count = self.make_prediction(self.chat_llm_chain_adaptor, query, "ADAPTATION", msg_id)
         return adp_res, tok_count
 
