@@ -87,6 +87,18 @@ class VirtualHavruta:
                     self.create_llm_chain(model, getattr(self, f"prompt_{suffix}")))
 
     def create_llm_chain(self, llm, prompt_template):
+        '''
+        Creates and returns an instance of a language model chain configured with a specified language model and prompt template.
+        
+        This function initializes a language model chain using the provided language model and prompt template. It sets the verbosity level to 'False' by default, which minimizes logging or debug output from the chain itself. The resulting object is designed to facilitate customized interactions with the language model based on the specified prompt structure, enhancing the flexibility and applicability of the model for various tasks.
+        
+        Parameters:
+        llm (LanguageModel): The language model to be used in the chain.
+        prompt_template (str): The template string that defines the structure and content of prompts to be sent to the language model.
+        
+        Returns:
+        LLMChain: An instance of a language model chain configured with the given language model and prompt template.
+        '''
         return LLMChain(llm=llm, prompt=prompt_template, verbose=False)
 
     def make_prediction(self, chain, query: str, action: str, msg_id: str='', ref_data: str = ''):
