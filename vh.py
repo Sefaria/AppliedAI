@@ -408,8 +408,9 @@ class VirtualHavruta:
             new_reference_part = document['url'] if document['url'] else None
             new_ref = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {new_url}"
             #Extracting the english text
-            new_text = str(document['en'][0]) if document['en'] else None
-
+            new_text = document['en'] if document['en'] else None
+            new_text = ' '.join(new_text)
+            
             # Update sorted source relevance dictionary if necessary fields are satisfied
             if new_reference_part and pr_score and new_category and new_text:
                 # Commit changes if fields are satisfied
