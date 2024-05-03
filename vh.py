@@ -117,6 +117,21 @@ class VirtualHavruta:
         return edit_res, tok_count
         
     def optimizer(self, query: str, msg_id: str=''):
+        '''
+        Optimizes a query using a chain of language models dedicated to prompt optimization, extracting various components from the optimization results.
+
+        This function submits a query to an optimization model, which processes the query and returns structured optimization results. These results are expected to contain components such as translation, key concepts, elaboration, quotation, challenges, and potential directions. The function decodes the JSON response, extracts these components, and returns them along with the token count used in the operation. Errors during JSON processing are logged, and default values are used if an error occurs, ensuring the function remains robust across different scenarios.
+        
+        Parameters:
+        query (str): The query string to be optimized by the model.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the translated query, extracted key concepts, elaboration details, any related quotations, challenges identified, potential directions proposed, and the total token count used during the optimization process.
+        
+        Raises:
+        Exception: Catches and logs any exception that occurs during the JSON parsing and sets all output components to empty strings as a fallback.
+        '''
         opt_res, tok_count = self.make_prediction(self.chat_llm_chain_optimization, query, "PROMPT OPTIMIZATION", msg_id)
         try:
             opt_res_json = json.loads(opt_res)
