@@ -295,6 +295,20 @@ class VirtualHavruta:
         return response, tok_count
 
     def retrieve_situational_info(self, msg_id: str = ''):
+        '''
+        Retrieves and returns the current date and time as a formatted string, indicating the exact moment a question was asked.
+
+        This function constructs a formatted message providing situational information based on the current date and time. It logs this information for monitoring and debugging purposes using an optional message identifier. The function is useful for adding context to logs, particularly in scenarios where the timing of operations is crucial.
+        
+        Parameters:
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        str: A formatted string that contains the day of the week, date, and exact time, prefixed with a descriptive label about the situational context.
+        
+        Example:
+        "[Situational Info] The time of asking this question is Monday, 01/01/2023 12:00:00"
+        '''
         now = datetime.now()
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         day_of_week = now.weekday() 
