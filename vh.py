@@ -148,6 +148,23 @@ class VirtualHavruta:
         return retrieval_res
     
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
+        '''
+        Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
+        
+        This function processes a set of retrieval results, classifying each result for relevance and calculating a composite relevance score based on classification results, similarity scores, and, for primary references, PageRank scores. It also consolidates results with the same URL to avoid duplication, ensuring that the most relevant and comprehensive content is retained. The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
+        
+        Parameters:
+        query (str): The query string against which references are being sorted and classified.
+        retrieval_res (iterable): An iterable of tuples containing reference data objects and similarity scores.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        filter_mode (str): Determines the mode for filtering references; can be 'primary' or 'secondary'. This affects how relevance scores are calculated.
+        
+        Returns:
+        tuple: A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary, and the total token count used during the process.
+        
+        Notes:
+        The function is robust to variations in data and manages complex scenarios where multiple references may have the same URL but different content or sources. It effectively manages and logs all operations to ensure data integrity and traceability.
+        '''
         # Initialize dictionaries and tok_count to store the data, references, relevance scores, and token count
         src_data_dict = {}
         src_ref_dict = {}
