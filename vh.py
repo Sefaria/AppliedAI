@@ -215,6 +215,21 @@ class VirtualHavruta:
         return ref_class, tok_count
 
     def retrieve_pr_score(self, doc_id: str, msg_id: str=''):
+        '''
+        Retrieves the page rank score for a given document identifier from a pre-defined page rank table.
+        
+        This function searches a dataframe for the page rank score associated with a specific document identifier (URL). If found, it returns the highest score present for that identifier; if no data is available, it returns zero and logs a warning. This function is critical for evaluating the importance or relevance of documents based on their page rank in various processing and decision-making contexts.
+        
+        Parameters:
+        doc_id (str): The document identifier for which the page rank score is to be retrieved.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        int or float: The highest page rank score found for the given document identifier. Returns 0 if no score is found.
+        
+        Notes:
+        The function uses logging to provide transparency about the retrieval process and to document any issues encountered, such as missing data for the specified document identifier.
+        '''
         page_ranks = self.pr_table.loc[self.pr_table['metadata.url'] == doc_id, 'metadata.pagerank']
         if not page_ranks.empty:
             pr_score = page_ranks.max()
