@@ -394,8 +394,8 @@ class VirtualHavruta:
             If merging is not succesful, original value is returned.
         """
 
-        #iterating each document
-        for document in retrieved_docs:
+        #iterating each document in reverse order
+        for document in reversed(retrieved_docs):
 
             # Extract necessary data to be written and to be checked
             #Extracting the URL
@@ -408,7 +408,7 @@ class VirtualHavruta:
             new_reference_part = document['url'] if document['url'] else None
             new_ref = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {new_url}"
             #Extracting the english text
-            new_text = str(document['en']) if document['en'] else None
+            new_text = str(document['en'][0]) if document['en'] else None
 
             # Update sorted source relevance dictionary if necessary fields are satisfied
             if new_reference_part and pr_score and new_category and new_text:
