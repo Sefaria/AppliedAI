@@ -101,7 +101,9 @@ class VirtualHavruta:
         '''
         Creates a prompt template for chat interactions based on a given category and template, optionally incorporating reference data.
         
-        This function generates a prompt template suitable for chat interactions by combining system messages with a human message template. It constructs the human message template dynamically based on whether reference data is required, incorporating it if the `ref_mode` parameter is set to True. The resulting prompt template is encapsulated in a `ChatPromptTemplate` object, which includes both system and human message components.
+        This function generates a prompt template suitable for chat interactions by combining system messages with a human message template.
+        It constructs the human message template dynamically based on whether reference data is required, incorporating it if the `ref_mode` parameter is set to True.
+        The resulting prompt template is encapsulated in a `ChatPromptTemplate` object, which includes both system and human message components.
         
         Parameters:
             category (str): The category of the prompt template, specifying the type of interaction or task.
@@ -152,7 +154,10 @@ class VirtualHavruta:
         '''
         Initializes multiple language model chains on a class instance, each configured with a specific prompt template and suffix.
         
-        This function dynamically creates and assigns language model chain objects to attributes of a class instance. It uses a base model and a list of suffixes to generate attribute names and corresponding prompt templates. Each chain is initialized with the same model but different prompt templates, which are assumed to be predefined as attributes on the class instance. This approach facilitates the management and use of multiple specialized tasks, such as QA, optimization, and adaptation, each requiring different prompt configurations.
+        This function dynamically creates and assigns language model chain objects to attributes of a class instance.
+        It uses a base model and a list of suffixes to generate attribute names and corresponding prompt templates.
+        Each chain is initialized with the same model but different prompt templates, which are assumed to be predefined as attributes on the class instance.
+        This approach facilitates the management and use of multiple specialized tasks, such as QA, optimization, and adaptation, each requiring different prompt configurations.
         
         Parameters:
         model (LanguageModel): The language model to be used for all chains.
@@ -166,7 +171,9 @@ class VirtualHavruta:
         '''
         Creates and returns an instance of a language model chain configured with a specified language model and prompt template.
         
-        This function initializes a language model chain using the provided language model and prompt template. It sets the verbosity level to 'False' by default, which minimizes logging or debug output from the chain itself. The resulting object is designed to facilitate customized interactions with the language model based on the specified prompt structure, enhancing the flexibility and applicability of the model for various tasks.
+        This function initializes a language model chain using the provided language model and prompt template.
+        It sets the verbosity level to 'False' by default, which minimizes logging or debug output from the chain itself.
+        The resulting object is designed to facilitate customized interactions with the language model based on the specified prompt structure, enhancing the flexibility and applicability of the model for various tasks.
         
         Parameters:
         llm (LanguageModel): The language model to be used in the chain.
@@ -181,7 +188,9 @@ class VirtualHavruta:
         '''
         Executes a prediction using a specified language model chain, providing logging and token tracking.
 
-        This function interfaces with a language model chain to perform a specific action (e.g., QA, optimization, editing) based on the provided query and optional reference data. It measures the number of tokens used in the process using a callback mechanism and logs both successful results and errors. The function is designed to handle both scenarios where reference data is and is not provided, optimizing its request to the model accordingly.
+        This function interfaces with a language model chain to perform a specific action (e.g., QA, optimization, editing) based on the provided query and optional reference data.
+        It measures the number of tokens used in the process using a callback mechanism and logs both successful results and errors.
+        The function is designed to handle both scenarios where reference data is and is not provided, optimizing its request to the model accordingly.
         
         Parameters:
         chain (LanguageModelChain): The specific language model chain used for prediction.
@@ -209,7 +218,10 @@ class VirtualHavruta:
         '''
         Analyzes a query for potential attacks using a language model chain specialized in anti-attack tasks, returning the detection status, explanation, and token count.
         
-        This function submits a query to an anti-attack model, which assesses the text for elements that might constitute an attack or harmful content. The model's response is expected to include a detection status and an explanation, separated by a special delimiter. If the parsing of the response fails, the function logs the error and defaults the detection to 'N' (No) with an empty explanation. This ensures reliable operation even in cases of unexpected model output or processing errors.
+        This function submits a query to an anti-attack model, which assesses the text for elements that might constitute an attack or harmful content.
+        The model's response is expected to include a detection status and an explanation, separated by a special delimiter.
+        If the parsing of the response fails, the function logs the error and defaults the detection to 'N' (No) with an empty explanation.
+        This ensures reliable operation even in cases of unexpected model output or processing errors.
         
         Parameters:
         query (str): The query string to be analyzed for potential attacks.
@@ -233,7 +245,10 @@ class VirtualHavruta:
         '''
         Processes a query using a language model chain optimized for adaptation tasks, returning the adapted result along with the token count.
 
-        This function sends a query to an adaptation-specific model, which modifies the query to fit particular contexts or requirements. It retrieves the adapted text and the number of tokens used in the model's response. The function is useful for tasks requiring contextual modifications or specific formatting. It also logs each transaction with an optional message identifier, aiding in monitoring and debugging processes.
+        This function sends a query to an adaptation-specific model, which modifies the query to fit particular contexts or requirements.
+        It retrieves the adapted text and the number of tokens used in the model's response.
+        The function is useful for tasks requiring contextual modifications or specific formatting.
+        It also logs each transaction with an optional message identifier, aiding in monitoring and debugging processes.
         
         Parameters:
         query (str): The query string to be adapted by the model.
@@ -249,7 +264,9 @@ class VirtualHavruta:
         '''
         Performs editing on a given query using a language model chain optimized for editing tasks, returning the edited result along with the token count.
 
-        This function sends a query to an editing-optimized model, which processes and refines the text to improve clarity, style, or correctness. The function captures the edited output and the count of tokens used by the model, facilitating usage tracking and evaluation. It also logs the operation using an optional message identifier, enhancing traceability and assisting with debugging.
+        This function sends a query to an editing-optimized model, which processes and refines the text to improve clarity, style, or correctness.
+        The function captures the edited output and the count of tokens used by the model, facilitating usage tracking and evaluation.
+        It also logs the operation using an optional message identifier, enhancing traceability and assisting with debugging.
         
         Parameters:
         query (str): The query string to be edited by the model.
@@ -265,7 +282,10 @@ class VirtualHavruta:
         '''
         Optimizes a query using a chain of language models dedicated to prompt optimization, extracting various components from the optimization results.
 
-        This function submits a query to an optimization model, which processes the query and returns structured optimization results. These results are expected to contain components such as translation, key concepts, elaboration, quotation, challenges, and potential directions. The function decodes the JSON response, extracts these components, and returns them along with the token count used in the operation. Errors during JSON processing are logged, and default values are used if an error occurs, ensuring the function remains robust across different scenarios.
+        This function submits a query to an optimization model, which processes the query and returns structured optimization results.
+        These results are expected to contain components such as translation, key concepts, elaboration, quotation, challenges, and potential directions.
+        The function decodes the JSON response, extracts these components, and returns them along with the token count used in the operation.
+        Errors during JSON processing are logged, and default values are used if an error occurs, ensuring the function remains robust across different scenarios.
         
         Parameters:
         query (str): The query string to be optimized by the model.
@@ -295,7 +315,9 @@ class VirtualHavruta:
         '''
         Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
 
-        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set. The results are filtered by checking each document's metadata against a predefined set of source filters. The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
+        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set.
+        The results are filtered by checking each document's metadata against a predefined set of source filters.
+        The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
         
         Parameters:
         query (str): The query string used to search for relevant documents.
@@ -327,7 +349,9 @@ class VirtualHavruta:
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
         
-        This function processes a set of retrieval results, classifying each result for relevance and calculating a composite relevance score based on classification results, similarity scores, and, for primary references, PageRank scores. It also consolidates results with the same URL to avoid duplication, ensuring that the most relevant and comprehensive content is retained. The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
+        This function processes a set of retrieval results, classifying each result for relevance and calculating a composite relevance score based on classification results, similarity scores, and, for primary references, PageRank scores.
+        It also consolidates results with the same URL to avoid duplication, ensuring that the most relevant and comprehensive content is retained.
+        The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
         
         Parameters:
         query (str): The query string against which references are being sorted and classified.
@@ -400,7 +424,10 @@ class VirtualHavruta:
         '''
         Classifies the provided query and reference data using a chained language model, returning the classification result and token count.
 
-        This function sends a query and reference data to a language model specifically tuned for classification tasks. It captures the classification result, which is expected to be a numerical value, and the count of tokens used by the model. If the model's output cannot be converted to an integer due to an error, the function logs the error and defaults the classification to 0. This ensures robust error handling and maintains the integrity of the classification process under all conditions.
+        This function sends a query and reference data to a language model specifically tuned for classification tasks.
+        It captures the classification result, which is expected to be a numerical value, and the count of tokens used by the model. 
+        If the model's output cannot be converted to an integer due to an error, the function logs the error and defaults the classification to 0.
+        This ensures robust error handling and maintains the integrity of the classification process under all conditions.
         
         Parameters:
         query (str): The query string to be classified by the model.
@@ -427,7 +454,9 @@ class VirtualHavruta:
         '''
         Retrieves the page rank score for a given document identifier from a pre-defined page rank table.
         
-        This function searches a dataframe for the page rank score associated with a specific document identifier (URL). If found, it returns the highest score present for that identifier; if no data is available, it returns zero and logs a warning. This function is critical for evaluating the importance or relevance of documents based on their page rank in various processing and decision-making contexts.
+        This function searches a dataframe for the page rank score associated with a specific document identifier (URL).
+        If found, it returns the highest score present for that identifier; if no data is available, it returns zero and logs a warning.
+        This function is critical for evaluating the importance or relevance of documents based on their page rank in various processing and decision-making contexts.
         
         Parameters:
         doc_id (str): The document identifier for which the page rank score is to be retrieved.
@@ -452,7 +481,9 @@ class VirtualHavruta:
         '''
         Constructs formatted reference strings and citation lists based on the source relevance and data dictionaries, with specific handling for primary and secondary references.
         
-        This function dynamically generates reference content and citation indices from sorted relevance data, differentiated by primary and secondary modes. It assembles detailed reference strings, citation lists, and deep links for secondary references if applicable. The function allows for continuation of citation numbering from a specified base, which is useful in documents where references span multiple sections or components.
+        This function dynamically generates reference content and citation indices from sorted relevance data, differentiated by primary and secondary modes.
+        It assembles detailed reference strings, citation lists, and deep links for secondary references if applicable.
+        The function allows for continuation of citation numbering from a specified base, which is useful in documents where references span multiple sections or components.
         
         Parameters:
         sorted_src_rel_dict (dict): A dictionary sorted by relevance, mapping source identifiers to their relevance scores.
@@ -506,7 +537,10 @@ class VirtualHavruta:
         '''
         Generates a Knowledge Graph (KG) deep link URL by concatenating up to the first three secondary reference URLs provided.
         
-        This function constructs a URL for the Neo4J dashboard by using up to three deep links from the provided list. If there are fewer than three deep links, it handles the indexing appropriately to avoid errors. The function also logs the outcome, providing a trace of the constructed URL or noting when no URL could be generated. This is particularly useful for debugging and ensuring the correct visualization links are generated and accessible.
+        This function constructs a URL for the Neo4J dashboard by using up to three deep links from the provided list.
+        If there are fewer than three deep links, it handles the indexing appropriately to avoid errors.
+        The function also logs the outcome, providing a trace of the constructed URL or noting when no URL could be generated.
+        This is particularly useful for debugging and ensuring the correct visualization links are generated and accessible.
         
         Parameters:
         deeplinks (list): A list of deep link URLs to secondary references.
@@ -548,7 +582,10 @@ class VirtualHavruta:
         '''
         Executes a query against a language model chain, returning the response and token count.
 
-        This function interfaces with a chain of language models to perform a question-answering (QA) task. It sends the provided query along with reference data to the model, captures both the textual response and the count of tokens used in the model's reply. The token count helps in monitoring and managing usage relative to any constraints or limits. Detailed logging is performed using an optional message ID for tracking and debugging purposes.
+        This function interfaces with a chain of language models to perform a question-answering (QA) task. 
+        It sends the provided query along with reference data to the model, captures both the textual response and the count of tokens used in the model's reply. 
+        The token count helps in monitoring and managing usage relative to any constraints or limits.
+        Detailed logging is performed using an optional message ID for tracking and debugging purposes.
         
         Parameters:
         query (str): The query string to be processed by the QA model.
@@ -566,7 +603,9 @@ class VirtualHavruta:
         '''
         Retrieves and returns the current date and time as a formatted string, indicating the exact moment a question was asked.
 
-        This function constructs a formatted message providing situational information based on the current date and time. It logs this information for monitoring and debugging purposes using an optional message identifier. The function is useful for adding context to logs, particularly in scenarios where the timing of operations is crucial.
+        This function constructs a formatted message providing situational information based on the current date and time.
+        It logs this information for monitoring and debugging purposes using an optional message identifier.
+        The function is useful for adding context to logs, particularly in scenarios where the timing of operations is crucial.
         
         Parameters:
         msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
@@ -588,7 +627,9 @@ class VirtualHavruta:
         '''
         Executes a query to the Sefaria Linker API by posting textual data and returns the JSON response.
         
-        This function forms and sends a POST request to the Sefaria Linker API with specified text titles and bodies. It handles various request parameters and errors systematically, providing detailed logs for debugging. The function is equipped to manage HTTP errors and general exceptions, ensuring robust error handling and logging.
+        This function forms and sends a POST request to the Sefaria Linker API with specified text titles and bodies.
+        It handles various request parameters and errors systematically, providing detailed logs for debugging.
+        The function is equipped to manage HTTP errors and general exceptions, ensuring robust error handling and logging.
         
         Parameters:
         text_title (str, optional): The title of the text for which references are being sought. Defaults to an empty string.
@@ -639,7 +680,8 @@ class VirtualHavruta:
         '''
         Retrieves documents from the Sefaria Linker API based on a given query and screen_res query, applying filters to distinguish between primary and secondary sources.
 
-        This function performs API calls to retrieve data relevant to enriched queries and processes that data based on specified filtering criteria. It is designed to support dynamic filtering of documents into primary or secondary categories, allowing for customized handling of search results.
+        This function performs API calls to retrieve data relevant to enriched queries and processes that data based on specified filtering criteria.
+        It is designed to support dynamic filtering of documents into primary or secondary categories, allowing for customized handling of search results.
         
         Parameters:
         screen_res (str): The screen_res query, which is used as part of the query to the Sefaria Linker.
