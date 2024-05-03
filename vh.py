@@ -302,7 +302,26 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. SITUATIONAL INFO: {situ_info}")
         return situ_info
 
-    def query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=5, msg_id: str = ''):
+    def query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=0, msg_id: str = ''):
+        '''
+        Executes a query to the Sefaria Linker API by posting textual data and returns the JSON response.
+        
+        This function forms and sends a POST request to the Sefaria Linker API with specified text titles and bodies. It handles various request parameters and errors systematically, providing detailed logs for debugging. The function is equipped to manage HTTP errors and general exceptions, ensuring robust error handling and logging.
+        
+        Parameters:
+        text_title (str, optional): The title of the text for which references are being sought. Defaults to an empty string.
+        text_body (str, optional): The body of the text for which references are being sought. Defaults to an empty string.
+        with_text (int, optional): A parameter specifying whether the response should include text; 1 for including text. Defaults to 1.
+        debug (int, optional): A debug flag to provide detailed debug information in the response. Defaults to 0.
+        max_segments (int, optional): The maximum number of text segments to return. Defaults to 0.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        dict or str: The JSON response from the API if successful, otherwise an error message string.
+        
+        Raises:
+        HTTPError: If an HTTP error occurs during the API request, an HTTPError exception is raised and logged.
+        '''
         # Sefaria Linker API endpoint
         api_url = "https://www.sefaria.org/api/find-refs"
 
