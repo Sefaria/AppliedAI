@@ -53,6 +53,14 @@ class VirtualHavruta:
         self.initialize_llm_instances()
 
     def initialize_prompt_templates(self):
+        '''
+        Initializes prompt templates for various chat interactions and updates class attributes accordingly.
+
+        This function initializes prompt templates for different chat interaction categories such as anti-attack, adaptor, editor, optimization, and classification.
+        It iterates over a list of categories, creates a prompt template for each category based on the 'system' template, and updates the class attributes with the generated templates.
+        Additionally, it creates a separate prompt template for the QA (question-answering) category, including reference data.
+
+        '''
         categories = ['anti_attack', 'adaptor', 'editor', 'optimization', 'classification']
         prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in categories}
         self.prompt_qa = self.create_prompt_template('system', 'qa', True)
