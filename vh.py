@@ -59,6 +59,22 @@ class VirtualHavruta:
         self.__dict__.update(prompts)
 
     def create_prompt_template(self, category: str, template: str, ref_mode: bool = False) -> ChatPromptTemplate:
+        '''
+        Creates a prompt template for chat interactions based on a given category and template, optionally incorporating reference data.
+        
+        This function generates a prompt template suitable for chat interactions by combining system messages with a human message template. It constructs the human message template dynamically based on whether reference data is required, incorporating it if the `ref_mode` parameter is set to True. The resulting prompt template is encapsulated in a `ChatPromptTemplate` object, which includes both system and human message components.
+        
+        Parameters:
+            category (str): The category of the prompt template, specifying the type of interaction or task.
+            template (str): The specific template within the category to be used for constructing the prompt.
+            ref_mode (bool, optional): A flag indicating whether reference data should be included in the prompt; defaults to False.
+        
+        Returns:
+            ChatPromptTemplate: A `ChatPromptTemplate` object containing the system message and human message components necessary for chat interactions.
+        
+        Example:
+            create_prompt_template("qa", "default", ref_mode=True) returns a `ChatPromptTemplate` object with a system message from the 'qa' category and a human message template that includes reference data.
+        '''
         system_message = SystemMessage(content=self.prompts[category][template])
         human_template = f"Question: {{human_input}}{' Reference Data: {ref_data}' if ref_mode else ''}."
         return ChatPromptTemplate.from_messages([
