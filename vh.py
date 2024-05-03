@@ -82,6 +82,15 @@ class VirtualHavruta:
             self.initialize_llm_chains(getattr(self, model_name), suffixes)
 
     def initialize_llm_chains(self, model, suffixes):
+        '''
+        Initializes multiple language model chains on a class instance, each configured with a specific prompt template and suffix.
+        
+        This function dynamically creates and assigns language model chain objects to attributes of a class instance. It uses a base model and a list of suffixes to generate attribute names and corresponding prompt templates. Each chain is initialized with the same model but different prompt templates, which are assumed to be predefined as attributes on the class instance. This approach facilitates the management and use of multiple specialized tasks, such as QA, optimization, and adaptation, each requiring different prompt configurations.
+        
+        Parameters:
+        model (LanguageModel): The language model to be used for all chains.
+        suffixes (list of str): A list of suffix identifiers that correspond to different tasks or configurations. These suffixes are used to form both the attribute names for the chains and to retrieve corresponding prompt templates from the class instance.
+        '''
         for suffix in suffixes:
             setattr(self, f"chat_llm_chain_{suffix}",
                     self.create_llm_chain(model, getattr(self, f"prompt_{suffix}")))
