@@ -302,6 +302,19 @@ class VirtualHavruta:
         return neo4j_deeplink
 
     def qa(self, query: str, ref_data: str, msg_id: str=''):
+        '''
+        Executes a query against a language model chain, returning the response and token count.
+
+        This function interfaces with a chain of language models to perform a question-answering (QA) task. It sends the provided query along with reference data to the model, captures both the textual response and the count of tokens used in the model's reply. The token count helps in monitoring and managing usage relative to any constraints or limits. Detailed logging is performed using an optional message ID for tracking and debugging purposes.
+        
+        Parameters:
+        query (str): The query string to be processed by the QA model.
+        ref_data (str): Additional reference data that might be required by the model for generating the answer.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the model's response (str) and the token count (int) used in generating that response.
+        '''
         response, tok_count = self.make_prediction(
                     self.chat_llm_chain_qa, query, "qa", msg_id, ref_data)
         return response, tok_count
