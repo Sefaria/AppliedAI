@@ -90,6 +90,24 @@ class VirtualHavruta:
         return LLMChain(llm=llm, prompt=prompt_template, verbose=False)
 
     def make_prediction(self, chain, query: str, action: str, msg_id: str='', ref_data: str = ''):
+        '''
+        Executes a prediction using a specified language model chain, providing logging and token tracking.
+
+        This function interfaces with a language model chain to perform a specific action (e.g., QA, optimization, editing) based on the provided query and optional reference data. It measures the number of tokens used in the process using a callback mechanism and logs both successful results and errors. The function is designed to handle both scenarios where reference data is and is not provided, optimizing its request to the model accordingly.
+        
+        Parameters:
+        chain (LanguageModelChain): The specific language model chain used for prediction.
+        query (str): The input query string for which the prediction is needed.
+        action (str): The type of action the model is performing, used for logging.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        ref_data (str, optional): Additional reference data to be included in the prediction request; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the result of the prediction (str) and the number of tokens used (int).
+        
+        Raises:
+        Exception: Catches and logs any exceptions that occur during the prediction process, including token expenditure.
+        '''
         with get_openai_callback() as cb:
             try: 
                 res = chain.predict(human_input=query, ref_data=ref_data) if ref_data else chain.predict(human_input=query)
