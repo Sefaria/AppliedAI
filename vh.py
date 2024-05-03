@@ -67,6 +67,13 @@ class VirtualHavruta:
         ])
 
     def initialize_llm_instances(self):
+        '''
+        Initializes multiple language model instances on a class instance.
+        Loads required configuration parameters from config files.
+        
+        Returns:
+        Large Language Model instance
+        '''
         model_api = self.config['openai_model_api']
         chain_setups = self.config['llm_chain_setups']
         
