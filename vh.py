@@ -18,6 +18,37 @@ import requests
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
     def __init__(self, prompts_file: str, config_file: str, logger):
+        '''
+        Initializes the instance with data from provided YAML files, including prompts, configurations, and reference information.
+        
+        This constructor method reads data from two YAML files: one containing prompts and the other containing configuration details.
+        It loads the prompts and configurations into corresponding attributes.
+        Additionally, it sets up the Neo4j vector index for semantic search and retrieves database configurations such as URL, username, and password.
+        It initializes a logger and a pagerank lookup table based on configuration.
+        Furthermore, it retrieves reference-related configurations, including filters and citation counts, and initializes prompt templates and language model instances.
+        
+        Parameters:
+            prompts_file (str): The path to the YAML file containing prompts.
+            config_file (str): The path to the YAML file containing configuration details.
+            logger: The logger instance for logging information and errors.
+        
+        Attributes:
+            prompts (dict): A dictionary containing prompts loaded from the prompts YAML file.
+            config (dict): A dictionary containing configuration details loaded from the config YAML file.
+            neo4j_vector (Neo4jVector): An instance of Neo4jVector for semantic search using Neo4j.
+            top_k (int): The top k results to retrieve from the Neo4j database.
+            neo4j_deeplink (str): The URL for the Neo4j dashboard deep link.
+            logger: The logger instance used for logging information and errors.
+            pr_table (DataFrame): A pandas DataFrame containing pagerank lookup table data.
+            primary_source_filter (list): A list of primary source filters for reference data.
+            num_primary_citations (int): The number of primary citations to retrieve.
+            num_secondary_citations (int): The number of secondary citations to retrieve.
+            linker_primary_source_filter (list): A list of primary source filters specific to linker references.
+        
+        Methods:
+            initialize_prompt_templates(): Initializes prompt templates based on configuration data.
+            initialize_llm_instances(): Initializes language model instances based on configuration data.
+        '''
         with open(prompts_file, 'r') as f:
             self.prompts = yaml.safe_load(f)
         with open(config_file, 'r') as f:
