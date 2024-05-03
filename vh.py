@@ -113,6 +113,18 @@ class VirtualHavruta:
         return adp_res, tok_count
 
     def editor(self, query: str, msg_id: str=''):
+        '''
+        Performs editing on a given query using a language model chain optimized for editing tasks, returning the edited result along with the token count.
+
+        This function sends a query to an editing-optimized model, which processes and refines the text to improve clarity, style, or correctness. The function captures the edited output and the count of tokens used by the model, facilitating usage tracking and evaluation. It also logs the operation using an optional message identifier, enhancing traceability and assisting with debugging.
+        
+        Parameters:
+        query (str): The query string to be edited by the model.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the edited text (str) and the token count (int) used in generating that edited text.
+        '''
         edit_res, tok_count = self.make_prediction(self.chat_llm_chain_editor, query, "EDITING", msg_id)
         return edit_res, tok_count
         
