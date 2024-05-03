@@ -204,6 +204,22 @@ class VirtualHavruta:
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
     
     def classification(self, query: str, ref_data: str, msg_id: str=''):
+        '''
+        Classifies the provided query and reference data using a chained language model, returning the classification result and token count.
+
+        This function sends a query and reference data to a language model specifically tuned for classification tasks. It captures the classification result, which is expected to be a numerical value, and the count of tokens used by the model. If the model's output cannot be converted to an integer due to an error, the function logs the error and defaults the classification to 0. This ensures robust error handling and maintains the integrity of the classification process under all conditions.
+        
+        Parameters:
+        query (str): The query string to be classified by the model.
+        ref_data (str): Reference data related to the query that may influence the classification.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the classification result (int) and the token count (int) used in generating that result.
+        
+        Raises:
+        Exception: Catches and logs any exception that occurs during the classification conversion process, defaulting the result to 0.
+        '''
         # Classifiy the data with LLM
         ref_class, tok_count = self.make_prediction(
                     self.chat_llm_chain_classification, query, "CLASSIFICATION", msg_id, ref_data)
