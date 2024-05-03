@@ -335,6 +335,23 @@ class VirtualHavruta:
             return f"Error occurred during Sefaria Linker Querying: {e}"
 
     def retrieve_docs_linker(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary'):
+        '''
+        Retrieves documents from the Sefaria Linker API based on a given query and screen_res query, applying filters to distinguish between primary and secondary sources.
+
+        This function performs API calls to retrieve data relevant to enriched queries and processes that data based on specified filtering criteria. It is designed to support dynamic filtering of documents into primary or secondary categories, allowing for customized handling of search results.
+        
+        Parameters:
+        screen_res (str): The screen_res query, which is used as part of the query to the Sefaria Linker.
+        enriched_query (str): The enriched query string used to retrieve documents.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        filter_mode (str): Mode for filtering search results; valid options are 'primary' or 'secondary'. Defaults to 'primary'.
+        
+        Returns:
+        list: A list of dictionaries, each representing a document that matches the search criteria. Each dictionary includes document details and an adjusted page rank.
+        
+        Raises:
+        ValueError: If the provided filter_mode is not recognized, an error is raised indicating an invalid filter mode.
+        '''
         # Making a call to sefaria linker api
         json_input = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query)
 
