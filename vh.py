@@ -100,6 +100,21 @@ class VirtualHavruta:
             return res, cb.total_tokens
 
     def anti_attack(self, query: str, msg_id: str=''):
+        '''
+        Analyzes a query for potential attacks using a language model chain specialized in anti-attack tasks, returning the detection status, explanation, and token count.
+        
+        This function submits a query to an anti-attack model, which assesses the text for elements that might constitute an attack or harmful content. The model's response is expected to include a detection status and an explanation, separated by a special delimiter. If the parsing of the response fails, the function logs the error and defaults the detection to 'N' (No) with an empty explanation. This ensures reliable operation even in cases of unexpected model output or processing errors.
+        
+        Parameters:
+        query (str): The query string to be analyzed for potential attacks.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the detection status (str), an explanation (str), and the token count (int) used during the analysis.
+        
+        Raises:
+        Exception: Catches and logs any exception that occurs during response parsing, setting default values for the detection status and explanation.
+        '''
         adv_res, tok_count = self.make_prediction(self.chat_llm_chain_anti_attack, query, "ANTI-ATTACK", msg_id)
         try:
             detection, explanation = adv_res.split('@SEP@')
