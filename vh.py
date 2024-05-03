@@ -225,6 +225,25 @@ class VirtualHavruta:
         return pr_score
 
     def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0) -> str:
+        '''
+        Constructs formatted reference strings and citation lists based on the source relevance and data dictionaries, with specific handling for primary and secondary references.
+        
+        This function dynamically generates reference content and citation indices from sorted relevance data, differentiated by primary and secondary modes. It assembles detailed reference strings, citation lists, and deep links for secondary references if applicable. The function allows for continuation of citation numbering from a specified base, which is useful in documents where references span multiple sections or components.
+        
+        Parameters:
+        sorted_src_rel_dict (dict): A dictionary sorted by relevance, mapping source identifiers to their relevance scores.
+        src_data_dict (dict): A dictionary mapping source identifiers to their data content.
+        src_ref_dict (dict): A dictionary mapping source identifiers to their reference details.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        ref_mode (str): Mode of reference; can be 'primary' or 'secondary'. This affects the starting citation number and how citations are processed.
+        n_citation_base (int): The starting index for citations, which is only used in 'secondary' mode.
+        
+        Returns:
+        tuple: A tuple containing strings for the concatenated reference data and citations, a list of deep links for secondary references, and the final citation index used.
+        
+        Notes:
+        The function logs details of the reference processing for tracking and debugging, enhancing traceability and accountability in system operations involving reference data management.
+        '''
         # Determine the starting citation number and how many citations to include
         n_citation_base = 0 if ref_mode == 'primary' else n_citation_base
         num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
