@@ -261,7 +261,19 @@ class VirtualHavruta:
 
     def generate_kg_deeplink(self, deeplinks, msg_id: str=''):
         '''
-        Currently KG visualization dashboard only displays up to the first three secondary references.
+        Generates a Knowledge Graph (KG) deep link URL by concatenating up to the first three secondary reference URLs provided.
+        
+        This function constructs a URL for the Neo4J dashboard by using up to three deep links from the provided list. If there are fewer than three deep links, it handles the indexing appropriately to avoid errors. The function also logs the outcome, providing a trace of the constructed URL or noting when no URL could be generated. This is particularly useful for debugging and ensuring the correct visualization links are generated and accessible.
+        
+        Parameters:
+        deeplinks (list): A list of deep link URLs to secondary references.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        str: A concatenated URL for the Neo4J dashboard that incorporates up to three secondary reference deep links. If no deep links are provided, an empty string is returned.
+        
+        Notes:
+        The function is currently set to handle exactly three links due to dashboard limitations. This behavior is noted as a potential area for future adjustments.
         '''
         # Define the maximum number of deeplinks to be used
         max_deeplinks_count = 3
