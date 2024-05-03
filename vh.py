@@ -132,6 +132,22 @@ class VirtualHavruta:
         return translation, extraction, elaboration, quotation, challenge, proposal, tok_count
 
     def retrieve_docs(self, query: str, msg_id: str='', filter_mode: str='primary'):
+        '''
+        Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
+
+        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set. The results are filtered by checking each document's metadata against a predefined set of source filters. The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
+        
+        Parameters:
+        query (str): The query string used to search for relevant documents.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        filter_mode (str): The mode to filter the search results by 'primary' or 'secondary' to determine the relevance of the sources.
+        
+        Returns:
+        list: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
+        
+        Raises:
+        ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
+        '''
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
