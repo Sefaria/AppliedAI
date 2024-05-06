@@ -664,6 +664,7 @@ class VirtualHavruta:
 
         try:
             # Simplify request by directly passing a dictionary to json parameter, which requests will automatically serialize
+            self.logger.info(f"MsgID={msg_id}. [LINKER RETRIEVAL] Retrieving linker references using this json: {data}")
             response = requests.post(api_url, headers=headers, params=params, json=data)
             self.logger.info(f"MsgID={msg_id}. Sefaria linker query response: {response}. {response.json()}.")
             response.raise_for_status()  # Handles HTTP errors by raising an HTTPError exception for bad requests
@@ -696,7 +697,7 @@ class VirtualHavruta:
         ValueError: If the provided filter_mode is not recognized, an error is raised indicating an invalid filter mode.
         '''
         # Making a call to sefaria linker api
-        json_input = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query)
+        json_input = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query, msg_id=msg_id)
 
         # To store documents
         results = []
