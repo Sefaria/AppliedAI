@@ -3,7 +3,7 @@ import os
 import yaml
 
 # Import Virtual Havruta class
-from vh import VirtualHavruta
+from VirtualHavruta import VirtualHavruta
 
 # Import Slack SDK modules for bot interaction
 from slack_bolt import App
@@ -11,10 +11,10 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
 # Utility function to create a logger for application logging
-from util import create_logger, part_res
+from VirtualHavruta.util import create_logger, part_res
 
 # Load configurations for database, Slack, and other services
-with open("_config.yaml") as file:
+with open("config.yaml") as file:
     config = yaml.safe_load(file)
 
 # Retrieve the Slack-related parameters
