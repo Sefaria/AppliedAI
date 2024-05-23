@@ -800,3 +800,72 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] \n----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} \n----p_src_data_dict: {p_src_data_dict} \n----p_src_ref_dict: {p_src_ref_dict}")
 
         return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
+        
+    def topic_ontology(self, extraction: str = '', msgid: str = ''):
+        self.logger.info(f"MsgID={msgid}. Starting topic ontology process.")
+
+        def get_all_topics():
+            cache_file = 'all_topics.json'
+            if os.path.exists(cache_file):
+                with open(cache_file, 'r') as file:
+                    topics = json.load(file)
+                self.logger.info(f"MsgID={msgid}. Loaded topics from cache.")
+            else:
+                response = requests.get('https://www.sefaria.org/api/topics')
+                if response.status_code == 200:
+                    topics = response.json()
+                    with open(cache_file, 'w') as file:
+                        json.dump(topics, file)
+                    self.logger.info(f"MsgID={msgid}. Fetched and cached topics from Sefaria API.")
+                else:
+                    self.logger.error(f"MsgID={msgid}. Failed to fetch topics from Sefaria API.")
+                    raise Exception("Failed to fetch topics from Sefaria API")
+            return topics
+
+        def find_topic_slugs(topic_names, all_topics):
+            slugs = []
+            for name in topic_names:
+                found = False
+                for topic in all_topics:
+                    for title in topic['titles']:
+                        if title['text'].lower() == name.lower():
+                            slugs.append(topic['slug'])
+                            found = True
+                            break
+                    if found:
+                        break
+            self.logger.info(f"MsgID={msgid}. Found topic slugs: {slugs}")
+            return slugs
+
+        def get_topic_descriptions(topic_slugs):
+            descriptions = {}
+            for slug in topic_slugs:
+                response = requests.get(f'https://www.sefaria.org/api/v2/topics/{slug}')
+                if response.status_code == 200:
+                    topic_data = response.json()
+                    if 'description' in topic_data and 'en' in topic_data['description']:
+                        descriptions[slug] = topic_data['description']['en']
+            self.logger.info(f"MsgID={msgid}. Retrieved topic descriptions: {descriptions}")
+            return descriptions
+
+        # Process the extraction string
+        topic_names = extraction.split(", ")
+        self.logger.info(f"MsgID={msgid}. Extracted topic names: {topic_names}")
+
+        # Get all topics
+        all_topics = get_all_topics()
+
+        # Find slugs for the topic names
+        topic_slugs = find_topic_slugs(topic_names, all_topics)
+
+        # Get descriptions for the topic slugs
+        descriptions = get_topic_descriptions(topic_slugs)
+
+        # Create a dictionary with topic names as keys and their descriptions as values
+        final_descriptions = {}
+        for name, slug in zip(topic_names, topic_slugs):
+            if slug in descriptions:
+                final_descriptions[name] = descriptions[slug]
+
+        self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
+        return final_descriptions
