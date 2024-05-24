@@ -2,7 +2,7 @@
 import yaml, json
 import operator
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 # Import custom langchain modules for NLP operations and vector search
@@ -807,11 +807,27 @@ class VirtualHavruta:
 
         def get_all_topics():
             cache_file = 'all_topics.json'
-            if os.path.exists(cache_file):
-                with open(cache_file, 'r') as file:
-                    topics = json.load(file)
-                self.logger.info(f"MsgID={msgid}. Loaded topics from cache.")
-            else:
+            cache_expiry = timedelta(days=1)
+            topics = []  # Ensure topics is always initialized
+
+            try:
+                if os.path.exists(cache_file):
+                    cache_mtime = datetime.fromtimestamp(os.path.getmtime(cache_file))
+                    if datetime.now() - cache_mtime < cache_expiry:
+                        with open(cache_file, 'r') as file:
+                            topics = json.load(file)
+                        self.logger.info(f"MsgID={msgid}. Loaded topics from cache.")
+                    else:
+                        topics = fetch_and_cache_topics()
+                else:
+                    topics = fetch_and_cache_topics()
+            except Exception as e:
+                self.logger.error(f"MsgID={msgid}. Exception occurred: {str(e)}")
+            
+            return topics
+
+        def fetch_and_cache_topics():
+            try:
                 response = requests.get('https://www.sefaria.org/api/topics')
                 if response.status_code == 200:
                     topics = response.json()
@@ -819,9 +835,11 @@ class VirtualHavruta:
                         json.dump(topics, file)
                     self.logger.info(f"MsgID={msgid}. Fetched and cached topics from Sefaria API.")
                 else:
-                    topics = []
                     self.logger.error(f"MsgID={msgid}. Failed to fetch topics from Sefaria API.")
                     raise Exception("Failed to fetch topics from Sefaria API")
+            except Exception as e:
+                self.logger.error(f"MsgID={msgid}. Exception occurred while fetching topics: {str(e)}")
+                topics = []
             return topics
 
         def find_topic_slugs(topic_names, all_topics):
@@ -871,3 +889,4 @@ class VirtualHavruta:
 
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
+
