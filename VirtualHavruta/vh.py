@@ -819,6 +819,7 @@ class VirtualHavruta:
                         json.dump(topics, file)
                     self.logger.info(f"MsgID={msgid}. Fetched and cached topics from Sefaria API.")
                 else:
+                    topics = []
                     self.logger.error(f"MsgID={msgid}. Failed to fetch topics from Sefaria API.")
                     raise Exception("Failed to fetch topics from Sefaria API")
             return topics
