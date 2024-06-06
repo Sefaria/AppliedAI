@@ -4,6 +4,9 @@ import operator
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+from neo4j import GraphDatabase
+import typing
+from langchain_core.documents import Document
 
 # Import custom langchain modules for NLP operations and vector search
 from langchain.vectorstores.neo4j_vector import Neo4jVector
@@ -16,6 +19,43 @@ from langchain_community.callbacks import get_openai_callback
 import traceback
 import requests
 
+def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
+    """
+    Convert a dictionary to a YAML-like string without using external libraries.
+
+    Parameters:
+    - input_dict (dict): The dictionary to convert.
+    - indent (int): The current indentation level.
+
+    Returns:
+    - str: The YAML-like string representation of the input dictionary.
+    """
+    yaml_str = ""
+    for key, value in input_dict.items():
+        padding = "  " * indent
+        if isinstance(value, dict):
+            yaml_str += f"{padding}{key}:\n{dict_to_yaml_str(value, indent + 1)}"
+        elif isinstance(value, list):
+            yaml_str += f"{padding}{key}:\n"
+            for item in value:
+                yaml_str += f"{padding}- {item}\n"
+        else:
+            yaml_str += f"{padding}{key}: {value}\n"
+    return yaml_str
+
+
+def convert_node_to_doc(node: "Node") -> Document:
+    node: dict = node.data()
+    assert len(node) == 1
+    node: dict = next(iter(node.values()))
+    return Document(
+        page_content=dict_to_yaml_str(node["text"])
+        if isinstance(node["text"], dict)
+        else node["text"],
+        metadata={
+            k.replace('metadata.', ''): v for k, v in node.items() if k.startswith('metadata.')
+        },
+    )
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
     def __init__(self, prompts_file: str, config_file: str, logger):
@@ -346,6 +386,42 @@ class VirtualHavruta:
         retrieval_res = list(filter(predicate, retrieved_docs))
         return retrieval_res
     
+    def retrieve_top_1_doc_with_neighbors(self, query: str, msg_id: str='', filter_mode: str='primary' ) -> list:
+        '''
+        Retrieve the document with the highest semantic similarity and its neighbor nodes in a graph db.
+
+        Parameters:
+        query (str): The query string used to search for relevant documents.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        filter_mode (str): The mode to filter the search results by 'primary' or 'secondary' to determine the relevance of the sources.
+        
+        Returns:
+        list: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
+        
+        Raises:
+        ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
+        '''
+        retrieval_res = self.retrieve_docs(query=query, msg_id=msg_id, filter_mode=filter_mode)
+        if len(retrieval_res) == 0:
+            return retrieval_res
+        else:
+            top_1_doc = retrieval_res[0][0]
+            query_parameters = {"url": top_1_doc.metadata["URL"], "text": top_1_doc.page_content}
+            with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+                nodes, _, _ = driver.execute_query(
+                """
+                MATCH (n {`metadata.url`:$url})-[:FROM_TO]->(neighbor)
+                RETURN DISTINCT neighbor
+                """,
+                parameters_=query_parameters,
+                database_=self.config["database"]["db_name"],)
+
+            documents = [convert_node_to_doc(node) for node in nodes]
+            return documents
+
+
+
+
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
