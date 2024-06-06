@@ -18,6 +18,7 @@ from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
 import traceback
 import requests
+import regex as re
 
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     """
@@ -406,20 +407,28 @@ class VirtualHavruta:
             return retrieval_res
         else:
             top_1_doc = retrieval_res[0][0]
-            query_parameters = {"url": top_1_doc.metadata["URL"], "text": top_1_doc.page_content}
-            with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
-                nodes, _, _ = driver.execute_query(
-                """
-                MATCH (n {`metadata.url`:$url})-[:FROM_TO]->(neighbor)
-                RETURN DISTINCT neighbor
-                """,
-                parameters_=query_parameters,
-                database_=self.config["database"]["db_name"],)
-
-            documents = [convert_node_to_doc(node) for node in nodes]
+            documents = self.query_neighbors_of_doc(top_1_doc)
             return documents
 
+    def get_document_id_graph_format(self, document: Document) -> str:
+        return str(document.metadata["seq_num"] -1)
 
+    def query_neighbors_of_doc(self, document: Document) -> list[Document]:
+        query_parameters = {"url": document.metadata["URL"], "id": self.get_document_id_graph_format(document),}
+        query_string="""
+        MATCH (n)-[:FROM_TO]->(neighbor)
+        WHERE n.`metadata.url`=$url
+        AND n.id = $id
+        RETURN DISTINCT neighbor
+        """
+        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+            nodes, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["db_name"],)
+
+        documents = [convert_node_to_doc(node) for node in nodes]
+        return documents
 
 
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
