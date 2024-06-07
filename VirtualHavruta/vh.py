@@ -7,7 +7,7 @@ import os
 from neo4j import GraphDatabase
 import typing
 from langchain_core.documents import Document
-
+import numpy as np
 # Import custom langchain modules for NLP operations and vector search
 from langchain.vectorstores.neo4j_vector import Neo4jVector
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -16,6 +16,7 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
+from langchain_community.utils.math import cosine_similarity
 import traceback
 import requests
 import regex as re
@@ -45,17 +46,15 @@ def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     return yaml_str
 
 
-def convert_node_to_doc(node: "Node") -> Document:
-    node: dict = node.data()
-    assert len(node) == 1
-    node: dict = next(iter(node.values()))
+def convert_record_to_doc(record: "Node") -> Document:
+    assert len(record) == 1
+    record: dict = next(iter(record.values()))
+    page_content = record.pop("text")
     return Document(
-        page_content=dict_to_yaml_str(node["text"])
-        if isinstance(node["text"], dict)
-        else node["text"],
-        metadata={
-            k.replace('metadata.', ''): v for k, v in node.items() if k.startswith('metadata.')
-        },
+        page_content=dict_to_yaml_str(page_content)
+        if isinstance(page_content, dict)
+        else page_content,
+        metadata=record
     )
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
@@ -408,12 +407,56 @@ class VirtualHavruta:
         else:
             top_1_doc = retrieval_res[0][0]
             documents = self.query_neighbors_of_doc(top_1_doc)
-            return documents
+            similarity_scores = self.compute_similarity_documents_query(documents, query)
+            return documents, similarity_scores
 
     def get_document_id_graph_format(self, document: Document) -> str:
+        """Given a document from the vectordb, return the document id of the corresponding node in the graph database.
+
+        Parameters
+        ----------
+        document
+            langchain document
+
+        Returns
+        -------
+            id of the document in the graph database
+        """
         return str(document.metadata["seq_num"] -1)
 
+    def get_document_id_vector_db_format(self, node: "Node") -> int:
+        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
+
+        Parameters
+        ----------
+        node
+            from the graph database
+
+        Returns
+        -------
+            id of the document in the vector database
+        """
+        record = node.data()
+        assert len(record) == 1
+        record: dict = next(iter(node.values()))
+        id_graph_format = record["id"]
+        return int(id_graph_format) + 1
+
     def query_neighbors_of_doc(self, document: Document) -> list[Document]:
+        """Given a document, query the graph database for its neighbors.
+
+        Return all neighbors of the document, both incoming and outgoing relationships.
+
+        Parameters
+        ----------
+        document
+            text chunk plus metadata
+
+        Returns
+        -------
+            list of neighbors of the document
+        """
+        # query graph db
         query_parameters = {"url": document.metadata["URL"], "id": self.get_document_id_graph_format(document),}
         query_string="""
         MATCH (n)-[:FROM_TO]-(neighbor)
@@ -427,8 +470,40 @@ class VirtualHavruta:
             parameters_=query_parameters,
             database_=self.config["database"]["db_name"],)
 
-        documents = [convert_node_to_doc(node) for node in nodes]
-        return documents
+        # find neighbors in vector db
+        vector_records = self.neo4j_vector.query(
+            """
+            MATCH (n)
+            WHERE n.seq_num in $ids
+            RETURN n
+            """,
+            params={"ids": [self.get_document_id_vector_db_format(node) for node in nodes]},
+        )
+        # convert records in vector db to document format
+        return [convert_record_to_doc(record) for record in vector_records]
+    
+    def compute_similarity_documents_query(self, documents: list[Document], query: str) -> float:
+        """Compute the similarity between a document and a query.
+
+        Parameters
+        ----------
+        documents
+            langchain documents
+        query
+            query string
+
+        Returns
+        -------
+            similarity score
+        """
+        query_embedding = np.array(self.neo4j_vector.embedding.embed_query(text=query)).reshape(1, -1)
+        document_embeddings = np.array([doc.metadata["embedding"] for doc in documents])
+        if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
+            similarity = cosine_similarity(query_embedding, document_embeddings)
+            relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
+            return relevance_score_function(similarity).squeeze().tolist()
+        else:
+            raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
 
 
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
