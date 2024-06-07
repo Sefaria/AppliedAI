@@ -416,7 +416,7 @@ class VirtualHavruta:
     def query_neighbors_of_doc(self, document: Document) -> list[Document]:
         query_parameters = {"url": document.metadata["URL"], "id": self.get_document_id_graph_format(document),}
         query_string="""
-        MATCH (n)-[:FROM_TO]->(neighbor)
+        MATCH (n)-[:FROM_TO]-(neighbor)
         WHERE n.`metadata.url`=$url
         AND n.id = $id
         RETURN DISTINCT neighbor
