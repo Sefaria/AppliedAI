@@ -405,10 +405,10 @@ class VirtualHavruta:
         if len(retrieval_res) == 0:
             return retrieval_res
         else:
-            top_1_doc = retrieval_res[0][0]
-            documents = self.query_neighbors_of_doc(top_1_doc)
-            similarity_scores = self.compute_similarity_documents_query(documents, query)
-            return documents, similarity_scores
+            top_1_doc, top_1_similarity = retrieval_res[0]
+            neighbor_docs = self.query_neighbors_of_doc(top_1_doc)
+            neighbor_similarity_scores = self.compute_similarity_documents_query(neighbor_docs, query)
+            return [(top_1_doc, top_1_similarity)]  + [(doc, sim) for doc, sim in zip(neighbor_docs, neighbor_similarity_scores, strict=True)]
 
     def get_document_id_graph_format(self, document: Document) -> str:
         """Given a document from the vectordb, return the document id of the corresponding node in the graph database.
@@ -501,7 +501,7 @@ class VirtualHavruta:
         if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
             similarity = cosine_similarity(query_embedding, document_embeddings)
             relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
-            return relevance_score_function(similarity).squeeze().tolist()
+            return relevance_score_function(similarity).reshape(-1).tolist()
         else:
             raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
 
