@@ -441,6 +441,55 @@ class VirtualHavruta:
         record: dict = next(iter(node.values()))
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
+    
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int) -> list[tuple["Node", float]]:
+        """Given a url, query the graph database for the neighbors of the node with that url.
+
+        Parameters
+        ----------
+        url
+            of central node
+        relationship
+            one of 'incoming', 'outgoing', 'both_ways'
+        depth
+            degree of neighbors to include, between 1 and n
+
+        Returns
+        -------
+            list of (node, similarity) tuples, where similarity decreases with distance to central node in graph
+        """
+        pass
+
+    def query_node_by_url(self, url: str,) -> str|None:
+        """Given a url, query the graph database for the node with that url.
+
+        If more than one node has the same url, return the only one.
+
+        Parameters
+        ----------
+        url
+            of node
+
+        Returns
+        -------
+            unique id of the node
+        """
+        query_parameters = {"url": url}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url`=$url
+        RETURN n.id
+        LIMIT 1
+        """
+        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+            id, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["db_name"],)
+        if id:
+            return id[0].data()["n.id"]
+        else:
+            return None
 
     def query_neighbors_of_doc(self, document: Document) -> list[Document]:
         """Given a document, query the graph database for its neighbors.
