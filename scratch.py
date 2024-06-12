@@ -23,9 +23,12 @@ vh = VirtualHavruta(PATH_PROMPTS, PATH_CONFIG, logger)
 query="What is in the mouth of a fool?"
 msgid = "1234"
 
-# start try clause slack app
 try:
     total_tokens = 0  # Initialize token counter
+
+    # Post an initial message acknowledging the received question
+    interim_msg = "I got your question. Let me get started to think."
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
 
     # Retrieve situational information, such as the current time and date
     situ_info = vh.retrieve_situational_info(msgid)
@@ -41,15 +44,35 @@ try:
 
         if not screen_res or '@CANNOT-ADAPT@' in screen_res:
             interim_msg = "Umm... it seems there's little I could do for this question. Would you rephrase it and ask again?"
+            # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+            # return
         
+        # Inform the user that the question is being reconsidered
+        interim_msg = f"Umm...I'm reconsidering your question and for now I interpret it as: {screen_res}"
+        # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
     else:
         screen_res, tok_count = vh.editor(query, msgid)
         total_tokens += tok_count
 
+    # Post a message indicating active contemplation and processing
+    interim_msg = "As I gear up to search for relevant information in my database, I am concurrently reflecting on your question......"
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
     # Optimize the query for improved retrieval and response quality
     translation, extraction, elaboration, quotation, challenge, proposal, tok_count = vh.optimizer(screen_res, msgid)
     total_tokens += tok_count
     
+    interim_msg = "Well here are just some of my preliminary and tentative thoughts:"
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+    interim_msg = part_res(elaboration)
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+    interim_msg = part_res(challenge)
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+    interim_msg = part_res(proposal)
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+
+    # Combine the results from the optimizer for retrieval
+    interim_msg = "Please wait a moment as I continue to search for relevant references to bolster the response......"
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
     
     if quotation:
         scripture_query = f"{part_res(quotation)} {part_res(extraction)}"
@@ -91,6 +114,11 @@ try:
     # Generate reference strings and deeplinks for secondary sources
     s_conc_ref_data, s_citations, deeplinks, _ = vh.generate_ref_str(s_sorted_src_rel_dict, s_src_data_dict, s_src_ref_dict, msgid, 'secondary', ref_count)
     
+    # Topic Ontology
+    interim_msg = f"Here are some topics extracted from your query: {extraction}"
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
+    interim_msg = "Looking at the Sefaria database for the extracted topics..."
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
     
     # Retrieve topic ontology results
     topic_ont_dict = vh.topic_ontology(extraction, msgid)
@@ -98,11 +126,16 @@ try:
     # Check if the dictionary is empty and log a message
     if not topic_ont_dict:
         logger.info(f"MsgID={msgid}. No topics found for the given extraction.")
+        interim_msg = "I could not find a description for extracted topics in the Sefaria database"
+        # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
     else:
+        interim_msg = "Here are some information from Sefaria database for topics that I found relevant to your query..."
+        # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
         topic_ont_results_msg = ""
         # Iterate over the result dictionary and add as a string to post at the end
         for topic, description in topic_ont_dict.items():
             topic_ont_results_msg += f"\n *Topic: {topic} *\nDescription: {description}\n"    
+        # slack_post_msg(client, channel_id, message_ts, topic_ont_results_msg, logger)
 
     # Combine primary and secondary reference data
     conc_ref_data = p_conc_ref_data + s_conc_ref_data + f"Ad-hoc supplementary information: {situ_info} {translation} {elaboration} {challenge} {proposal} {topic_ont_dict}"
@@ -115,6 +148,9 @@ try:
     main_response, tok_count = vh.qa(screen_res, conc_ref_data, msgid)
     total_tokens += tok_count  # Update token count
 
+    # Determine final messages to send based on available citations and response content
+    interim_msg = "Here comes my final response:"
+    # slack_post_msg(client, channel_id, message_ts, interim_msg, logger)
         
     if citations:
         if "@IRRELEVANT-SOURCE@" in main_response:
@@ -145,23 +181,12 @@ try:
         kg_msg = "\n *Visualize References in Knowledge Graph:* \n No knowledge graph to display. \n"
         
         
+    # Post final messages
+    # slack_post_msg(client, channel_id, message_ts, final_msg, logger)
+    # slack_post_msg(client, channel_id, message_ts, ref_msg, logger, kg_msg)
+
     # Log the total number of tokens spent processing this query
     logger.info(f"MsgID={msgid}. [Token Count] Spent {total_tokens} tokens in total for this round of query.")
 except Exception as e:
     logger.error(f"MsgID={msgid}. [Pipeline Error] {e}")
-# end try clause slack app
-
-    
-    # Log the total number of tokens spent processing this query
-# node_id = vh.query_node_by_url(url="https://www.sefaria.org/Proverbs.14.3")
-# screen_res, tok_count = vh.editor(query)
-# translation, extraction, elaboration, quotation, challenge, proposal, tok_count = vh.optimizer(screen_res)
-# enriched_query = f"{part_res(translation)} {part_res(extraction)} {part_res(elaboration)} {part_res(proposal)} {part_res(quotation)}"
-# linker_res = vh.retrieve_docs_linker(screen_res=screen_res, enriched_query=enriched_query)
-
-# docs_classic = vh.retrieve_docs(query=query)
-# retrieval_res = vh.retrieve_top_1_doc_with_neighbors(query=query)    
-
-# sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens = vh.sort_reference(query=query, retrieval_res=retrieval_res, )
-
-print("Done")
+    # slack_post_msg(client, channel_id, message_ts, 'An error occurred while I tried to answer. Please contact administrator.', logger)
