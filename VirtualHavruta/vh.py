@@ -442,7 +442,7 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
     
-    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int) -> list[tuple["Node", float]]:
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int) -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Parameters
@@ -456,10 +456,29 @@ class VirtualHavruta:
 
         Returns
         -------
-            list of (node, similarity) tuples, where similarity decreases with distance to central node in graph
+            list of (node, distance) tuples, where distance is the number of hops from the central node
         """
-        pass
-
+        assert relationship in ["incoming", "outgoing", "both_ways"]
+        start_node_operator: str = "<-" if relationship == "incoming" else "-"
+        related_node_operator: str = "->" if relationship == "outgoing" else "-"
+        nodes = []
+        query_params: dict = {"url": url}
+        for i in range(1, depth + 1):
+            query = f"""
+            MATCH (start {{`metadata.url`: $url}})
+            WITH start
+            MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
+            WHERE neighbor <> start
+            RETURN DISTINCT neighbor, {i} AS depth
+            """
+            with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+                neighbor_nodes, _, _ = driver.execute_query(
+                query,
+                parameters_=query_params,
+                database_=self.config["database"]["db_name"],)
+            nodes.extend(neighbor_nodes)
+        return nodes
+    
     def query_node_by_url(self, url: str,) -> str|None:
         """Given a url, query the graph database for the node with that url.
 
