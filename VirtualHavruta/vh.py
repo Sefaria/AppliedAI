@@ -19,7 +19,6 @@ from langchain_community.callbacks import get_openai_callback
 from langchain_community.utils.math import cosine_similarity
 import traceback
 import requests
-import regex as re
 
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     """
@@ -46,6 +45,53 @@ def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     return yaml_str
 
 
+def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/") -> Document:
+    """
+    Convert a node from the graph database to a Document object.
+
+    Parameters:
+    - node (Node): The node from the graph database.
+
+    Returns:
+    - Document: The Document object created from the node.
+    """
+    node_data: dict = get_node_data(node)
+    metadata = {k.replace("metadata.", ""):v for k, v in node_data.items() if k.startswith("metadata.")}
+    metadata['URL'] = metadata['url']
+    del metadata['url']
+    new_reference_part = metadata["URL"].replace(base_url, "")
+    new_category = metadata["docCategory"]
+    metadata["source"] = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {metadata['URL']}"
+
+    page_content = dict_to_yaml_str(node_data.get("text")) if isinstance(node_data.get("text"), dict) else node_data.get("text", "")
+    return Document(
+        page_content=page_content,
+        metadata=metadata
+    )
+
+
+def get_node_data(node: "Node") -> dict:
+    """Given a node from the graph database, return the data of the node.
+
+    Parameters
+    ----------
+    node
+        from the graph database
+
+    Returns
+    -------
+        data of the node
+    """
+    try:
+        record = node.data()
+    except AttributeError:
+        record = node._properties
+    else:
+        assert len(record) == 1
+        record: dict = next(iter(record.values()))
+    return record
+
+
 def convert_record_to_doc(record: "Node") -> Document:
     assert len(record) == 1
     record: dict = next(iter(record.values()))
@@ -55,6 +101,16 @@ def convert_record_to_doc(record: "Node") -> Document:
         if isinstance(page_content, dict)
         else page_content,
         metadata=record
+    )
+
+def convert_linker_result_to_doc(linker_result: dict, url_prefix: str = "https://www.sefaria.org/") -> Document:
+    page_content = linker_result.pop("en")[0]
+    linker_result["url"] = url_prefix + linker_result["url"] if not linker_result["url"].startswith("http") else linker_result["url"]
+    return Document(
+        page_content=dict_to_yaml_str(page_content)
+        if isinstance(page_content, dict)
+        else page_content,
+        metadata=linker_result
     )
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
@@ -386,6 +442,43 @@ class VirtualHavruta:
         retrieval_res = list(filter(predicate, retrieved_docs))
         return retrieval_res
     
+    def retrieve_nodes_matching_linker_results(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary',
+                                               url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
+        """Retrieve nodes corresponding to linker results given a query.
+
+        Get linker results given a query. Find and return the corresponding nodes in the graph database.
+        There is a one-to-many relationship between linker result and graphs in the graph db.
+
+        Parameters
+        ----------
+        screen_res
+            The screen_res query, which is used as part of the query to the Sefaria Linker.
+        enriched_query
+            The enriched query string used to retrieve documents.
+        msg_id, optional
+            _description_, by default ''
+        filter_mode, optional
+            Mode for filtering search results; valid options are 'primary' or 'secondary'. Defaults to 'primary'.
+        url_prefix, optional
+            add domain if missing, by default "https://www.sefaria.org/"
+
+        Returns
+        -------
+           list of documents
+        """
+        linker_results: list[dict] = self.retrieve_docs_linker(screen_res, enriched_query, msg_id=msg_id, filter_mode=filter_mode)
+        urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
+                                    for linker_res in linker_results})
+        nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
+        # ToDo: How to treat the one to many relationship url -> node
+        unique_urls = set()
+        docs_linker_filtered: list = []
+        for doc in nodes_linker:
+            if doc.metadata["URL"] not in unique_urls:
+                unique_urls.add(doc.metadata["URL"])
+                docs_linker_filtered.append(doc)
+        return docs_linker_filtered
+
     def retrieve_top_1_doc_with_neighbors(self, query: str, msg_id: str='', filter_mode: str='primary' ) -> list:
         '''
         Retrieve the document with the highest semantic similarity and its neighbor nodes in a graph db.
@@ -424,6 +517,7 @@ class VirtualHavruta:
         """
         return str(document.metadata["seq_num"] -1)
 
+
     def get_document_id_vector_db_format(self, node: "Node") -> int:
         """Given a node from the graph database, return the document id of the corresponding document in the vector database.
 
@@ -436,12 +530,47 @@ class VirtualHavruta:
         -------
             id of the document in the vector database
         """
-        record = node.data()
-        assert len(record) == 1
-        record: dict = next(iter(node.values()))
+        record: dict = get_node_data(node)
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
     
+    def get_retrieval_results_knowledge_graph(self, url: str, relationship: str, depth: int) -> list[tuple[Document, float]]:
+        """Given a url, query the graph database for the neighbors of the node with that url.
+
+        Score the neighbors based upon their distance to the central node.
+        Parameters
+        ----------
+        url
+            of central node
+        relationship
+            one of 'incoming', 'outgoing', 'both_ways'
+        depth
+            degree of neighbors to include, between 1 and n
+
+        Returns
+        -------
+            list of (document, score
+        """
+        nodes_distances = self.get_graph_neighbors_by_url(url, relationship, depth)
+        nodes = [node for node, _ in nodes_distances]
+        docs =  [convert_node_to_doc(node) for node in nodes]
+        distances = [distance for _, distance in nodes_distances]
+        scores = [self.score_document_by_graph_distance(distance, start_score=6.0, score_decrease_per_hop=0.1) for distance in distances]
+        return list(zip(docs, scores, strict=True))
+
+    def score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float:
+        """Score a document w.r.t. a query.
+
+        Parameters
+        ----------
+        document
+           langchain type
+        Returns
+        -------
+            score
+        """
+        return start_score - n_hops * score_decrease_per_hop
+
     def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int) -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
@@ -479,6 +608,38 @@ class VirtualHavruta:
             nodes.extend(neighbor_nodes)
         return nodes
     
+    def get_docs_corresponding_to_nodes(self, nodes: list["Node"]) -> list[Document]:
+        """Given a list of nodes from the graph database, return the corresponding documents from the vector database.
+
+        Parameters
+        ----------
+        nodes
+            from the graph database
+
+        Returns
+        -------
+            list of documents
+        """
+        # find neighbors in vector db
+        vector_records = self.neo4j_vector.query(
+            """
+            MATCH (n)
+            WHERE n.seq_num in $ids
+            RETURN DISTINCT n
+            """,
+            params={"ids": [self.get_document_id_vector_db_format(node) for node in nodes]},
+        )
+        docs = [convert_record_to_doc(record) for record in vector_records]
+        unique_ids = set()
+        docs_filtered = []
+        for doc in docs:
+            if doc.metadata["seq_num"] not in unique_ids:
+                unique_ids.add(doc.metadata["seq_num"])
+                doc.page_content = [get_node_data(node)["text"] for node in nodes
+                                    if get_node_data(node)["metadata.url"] == doc.metadata["URL"]][0]
+                docs_filtered.append(doc)
+        return docs_filtered
+
     def query_node_by_url(self, url: str,) -> str|None:
         """Given a url, query the graph database for the node with that url.
 
@@ -509,6 +670,36 @@ class VirtualHavruta:
             return id[0].data()["n.id"]
         else:
             return None
+
+    def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
+        """Given a list of urls, query the graph database for the nodes with those urls.
+
+        Note that there is a one-to-many relationship between urls and documents in the vector database,
+        due to different sources for the same url.
+
+        Return the nodes as document compatible type.
+
+        Parameters
+        ----------
+        urls
+            of documents
+
+        Returns
+        -------
+            list of documents
+        """
+        query_parameters = {"urls": urls}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url` in $urls
+        RETURN n
+        """
+        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+            nodes, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["db_name"],)
+        return [convert_node_to_doc(node) for node in nodes]
 
     def query_neighbors_of_doc(self, document: Document) -> list[Document]:
         """Given a document, query the graph database for its neighbors.
