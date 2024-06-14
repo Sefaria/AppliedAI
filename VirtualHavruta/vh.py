@@ -608,38 +608,6 @@ class VirtualHavruta:
             nodes.extend(neighbor_nodes)
         return nodes
     
-    def get_docs_corresponding_to_nodes(self, nodes: list["Node"]) -> list[Document]:
-        """Given a list of nodes from the graph database, return the corresponding documents from the vector database.
-
-        Parameters
-        ----------
-        nodes
-            from the graph database
-
-        Returns
-        -------
-            list of documents
-        """
-        # find neighbors in vector db
-        vector_records = self.neo4j_vector.query(
-            """
-            MATCH (n)
-            WHERE n.seq_num in $ids
-            RETURN DISTINCT n
-            """,
-            params={"ids": [self.get_document_id_vector_db_format(node) for node in nodes]},
-        )
-        docs = [convert_record_to_doc(record) for record in vector_records]
-        unique_ids = set()
-        docs_filtered = []
-        for doc in docs:
-            if doc.metadata["seq_num"] not in unique_ids:
-                unique_ids.add(doc.metadata["seq_num"])
-                doc.page_content = [get_node_data(node)["text"] for node in nodes
-                                    if get_node_data(node)["metadata.url"] == doc.metadata["URL"]][0]
-                docs_filtered.append(doc)
-        return docs_filtered
-
     def query_node_by_url(self, url: str,) -> str|None:
         """Given a url, query the graph database for the node with that url.
 
