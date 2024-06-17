@@ -103,15 +103,7 @@ def convert_record_to_doc(record: "Node") -> Document:
         metadata=record
     )
 
-def convert_linker_result_to_doc(linker_result: dict, url_prefix: str = "https://www.sefaria.org/") -> Document:
-    page_content = linker_result.pop("en")[0]
-    linker_result["url"] = url_prefix + linker_result["url"] if not linker_result["url"].startswith("http") else linker_result["url"]
-    return Document(
-        page_content=dict_to_yaml_str(page_content)
-        if isinstance(page_content, dict)
-        else page_content,
-        metadata=linker_result
-    )
+
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
     def __init__(self, prompts_file: str, config_file: str, logger):
@@ -478,61 +470,6 @@ class VirtualHavruta:
                 unique_urls.add(doc.metadata["URL"])
                 docs_linker_filtered.append(doc)
         return docs_linker_filtered
-
-    def retrieve_top_1_doc_with_neighbors(self, query: str, msg_id: str='', filter_mode: str='primary' ) -> list:
-        '''
-        Retrieve the document with the highest semantic similarity and its neighbor nodes in a graph db.
-
-        Parameters:
-        query (str): The query string used to search for relevant documents.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        filter_mode (str): The mode to filter the search results by 'primary' or 'secondary' to determine the relevance of the sources.
-        
-        Returns:
-        list: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
-        
-        Raises:
-        ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
-        '''
-        retrieval_res = self.retrieve_docs(query=query, msg_id=msg_id, filter_mode=filter_mode)
-        if len(retrieval_res) == 0:
-            return retrieval_res
-        else:
-            top_1_doc, top_1_similarity = retrieval_res[0]
-            neighbor_docs = self.query_neighbors_of_doc(top_1_doc)
-            neighbor_similarity_scores = self.compute_similarity_documents_query(neighbor_docs, query)
-            return [(top_1_doc, top_1_similarity)]  + [(doc, sim) for doc, sim in zip(neighbor_docs, neighbor_similarity_scores, strict=True)]
-
-    def get_document_id_graph_format(self, document: Document) -> str:
-        """Given a document from the vectordb, return the document id of the corresponding node in the graph database.
-
-        Parameters
-        ----------
-        document
-            langchain document
-
-        Returns
-        -------
-            id of the document in the graph database
-        """
-        return str(document.metadata["seq_num"] -1)
-
-
-    def get_document_id_vector_db_format(self, node: "Node") -> int:
-        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
-
-        Parameters
-        ----------
-        node
-            from the graph database
-
-        Returns
-        -------
-            id of the document in the vector database
-        """
-        record: dict = get_node_data(node)
-        id_graph_format = record["id"]
-        return int(id_graph_format) + 1
     
     def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int) -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
@@ -668,70 +605,6 @@ class VirtualHavruta:
             parameters_=query_parameters,
             database_=self.config["database"]["kg_name"],)
         return [convert_node_to_doc(node) for node in nodes]
-
-    def query_neighbors_of_doc(self, document: Document) -> list[Document]:
-        """Given a document, query the graph database for its neighbors.
-
-        Return all neighbors of the document, both incoming and outgoing relationships.
-
-        Parameters
-        ----------
-        document
-            text chunk plus metadata
-
-        Returns
-        -------
-            list of neighbors of the document
-        """
-        # query graph db
-        query_parameters = {"url": document.metadata["URL"], "id": self.get_document_id_graph_format(document),}
-        query_string="""
-        MATCH (n)-[:FROM_TO]-(neighbor)
-        WHERE n.`metadata.url`=$url
-        AND n.id = $id
-        RETURN DISTINCT neighbor
-        """
-        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
-            nodes, _, _ = driver.execute_query(
-            query_string,
-            parameters_=query_parameters,
-            database_=self.config["database"]["kg_name"],)
-
-        # find neighbors in vector db
-        vector_records = self.neo4j_vector.query(
-            """
-            MATCH (n)
-            WHERE n.seq_num in $ids
-            RETURN n
-            """,
-            params={"ids": [self.get_document_id_vector_db_format(node) for node in nodes]},
-        )
-        # convert records in vector db to document format
-        return [convert_record_to_doc(record) for record in vector_records]
-    
-    def compute_similarity_documents_query(self, documents: list[Document], query: str) -> float:
-        """Compute the similarity between a document and a query.
-
-        Parameters
-        ----------
-        documents
-            langchain documents
-        query
-            query string
-
-        Returns
-        -------
-            similarity score
-        """
-        query_embedding = np.array(self.neo4j_vector.embedding.embed_query(text=query)).reshape(1, -1)
-        document_embeddings = np.array([doc.metadata["embedding"] for doc in documents])
-        if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
-            similarity = cosine_similarity(query_embedding, document_embeddings)
-            relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
-            return relevance_score_function(similarity).reshape(-1).tolist()
-        else:
-            raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
-
 
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
         '''
