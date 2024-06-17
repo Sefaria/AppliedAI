@@ -25,11 +25,11 @@ def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     Convert a dictionary to a YAML-like string without using external libraries.
 
     Parameters:
-    - input_dict (dict): The dictionary to convert.
-    - indent (int): The current indentation level.
+        input_dict: The dictionary to convert.
+        indent: The current indentation level.
 
     Returns:
-    - str: The YAML-like string representation of the input dictionary.
+    The YAML-like string representation of the input dictionary.
     """
     yaml_str = ""
     for key, value in input_dict.items():
@@ -50,10 +50,10 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
     Convert a node from the graph database to a Document object.
 
     Parameters:
-    - node (Node): The node from the graph database.
+        node (Node): The node from the graph database.
 
     Returns:
-    - Document: The Document object created from the node.
+        Document: The Document object created from the node.
     """
     node_data: dict = get_node_data(node)
     metadata = {k.replace("metadata.", ""):v for k, v in node_data.items() if k.startswith("metadata.")}
@@ -157,11 +157,11 @@ class VirtualHavruta:
         self.neo4j_vector = Neo4jVector.from_existing_index(
             OpenAIEmbeddings(model=model_api['embedding_model']),
             index_name="index",
-            url=db['db_url'],
-            username=db['db_username'],
-            password=db['db_password'],
+            url=db['emb_url'],
+            username=db['emb_username'],
+            password=db['emb_password'],
         )
-        self.top_k = db['top_k']
+        self.top_k = db['emb_top_k']
         self.neo4j_deeplink = db['neo4j_deeplink']
 
         # Initiate logger and pagerank lookup table
@@ -534,7 +534,7 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
     
-    def get_retrieval_results_knowledge_graph(self, url: str, relationship: str, depth: int) -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int) -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -542,16 +542,16 @@ class VirtualHavruta:
         ----------
         url
             of central node
-        relationship
-            one of 'incoming', 'outgoing', 'both_ways'
-        depth
-            degree of neighbors to include, between 1 and n
+        direction
+            of relationship, one of 'incoming', 'outgoing', 'both_ways'
+        order
+            order of neighbors (=number of hops) to include, between 1 and n
 
         Returns
         -------
             list of (document, score
         """
-        nodes_distances = self.get_graph_neighbors_by_url(url, relationship, depth)
+        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order)
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
         distances = [distance for _, distance in nodes_distances]
@@ -600,18 +600,18 @@ class VirtualHavruta:
             WHERE neighbor <> start
             RETURN DISTINCT neighbor, {i} AS depth
             """
-            with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+            with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
                 neighbor_nodes, _, _ = driver.execute_query(
                 query,
                 parameters_=query_params,
-                database_=self.config["database"]["db_name"],)
+                database_=self.config["database"]["kg_name"],)
             nodes.extend(neighbor_nodes)
         return nodes
     
     def query_node_by_url(self, url: str,) -> str|None:
         """Given a url, query the graph database for the node with that url.
 
-        If more than one node has the same url, return the only one.
+        If more than one node has the same url, return only one.
 
         Parameters
         ----------
@@ -629,11 +629,11 @@ class VirtualHavruta:
         RETURN n.id
         LIMIT 1
         """
-        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
             id, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["db_name"],)
+            database_=self.config["database"]["kg_name"],)
         if id:
             return id[0].data()["n.id"]
         else:
@@ -662,11 +662,11 @@ class VirtualHavruta:
         WHERE n.`metadata.url` in $urls
         RETURN n
         """
-        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["db_name"],)
+            database_=self.config["database"]["kg_name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
     def query_neighbors_of_doc(self, document: Document) -> list[Document]:
@@ -691,11 +691,11 @@ class VirtualHavruta:
         AND n.id = $id
         RETURN DISTINCT neighbor
         """
-        with GraphDatabase.driver(self.config["database"]["graph_db_url"], auth=(self.config["database"]["db_username"], self.config["database"]["db_password"])) as driver:
+        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["db_name"],)
+            database_=self.config["database"]["kg_name"],)
 
         # find neighbors in vector db
         vector_records = self.neo4j_vector.query(
