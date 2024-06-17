@@ -421,9 +421,12 @@ class VirtualHavruta:
         '''
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
+        primary_doc_categories = {category.replace("Document Category: ", "") for category in self.primary_source_filter}
+        operator_filter_mode = "$in" if filter_mode == 'primary' else "$nin"
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
-            query.lower(), self.top_k
-        )
+            query.lower(), self.top_k,
+            # filter={"docCategory": {operator_filter_mode: primary_doc_categories}}
+            )
         # Filter the documents based on whether we're looking for primary or secondary sources
         if filter_mode == 'primary':
             predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.primary_source_filter)
@@ -471,7 +474,7 @@ class VirtualHavruta:
                 docs_linker_filtered.append(doc)
         return docs_linker_filtered
     
-    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int) -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, filter_mode: str="primary") -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -486,9 +489,9 @@ class VirtualHavruta:
 
         Returns
         -------
-            list of (document, score
+            list of (document, score)
         """
-        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order)
+        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode=filter_mode)
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
         distances = [distance for _, distance in nodes_distances]
@@ -508,7 +511,7 @@ class VirtualHavruta:
         """
         return start_score - n_hops * score_decrease_per_hop
 
-    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int) -> list[tuple["Node", int]]:
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode: str = "primary") -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Parameters
@@ -528,13 +531,15 @@ class VirtualHavruta:
         start_node_operator: str = "<-" if relationship == "incoming" else "-"
         related_node_operator: str = "->" if relationship == "outgoing" else "-"
         nodes = []
-        query_params: dict = {"url": url}
+        primary_doc_categories = [category.replace("Document Category: ", "") for category in self.primary_source_filter]
+        query_params: dict = {"url": url, "primaryDocCategories": primary_doc_categories}
         for i in range(1, depth + 1):
             query = f"""
             MATCH (start {{`metadata.url`: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
+            AND {"NOT" if filter_mode == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories
             RETURN DISTINCT neighbor, {i} AS depth
             """
             with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
