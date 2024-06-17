@@ -88,18 +88,6 @@ def get_node_data(node: "Node") -> dict:
     return record
 
 
-def convert_record_to_doc(record: "Node") -> Document:
-    assert len(record) == 1
-    record: dict = next(iter(record.values()))
-    page_content = record.pop("text")
-    return Document(
-        page_content=dict_to_yaml_str(page_content)
-        if isinstance(page_content, dict)
-        else page_content,
-        metadata=record
-    )
-
-
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
     def __init__(self, prompts_file: str, config_file: str, logger):
