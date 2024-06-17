@@ -5,9 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 from neo4j import GraphDatabase
-import typing
 from langchain_core.documents import Document
-import numpy as np
 # Import custom langchain modules for NLP operations and vector search
 from langchain.vectorstores.neo4j_vector import Neo4jVector
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -16,8 +14,6 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
-from langchain_community.utils.math import cosine_similarity
-import traceback
 import requests
 
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
