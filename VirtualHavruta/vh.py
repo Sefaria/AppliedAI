@@ -149,7 +149,9 @@ class VirtualHavruta:
         linker_references = self.config['linker_references']
         self.primary_source_filter = refs['primary_source_filter']
         self.num_primary_citations = refs['num_primary_citations']
-        self.num_secondary_citations = refs['num_secondary_citations']        
+        self.num_secondary_citations = refs['num_secondary_citations']
+        self.num_primary_citations_linker = linker_references['num_primary_citations']
+        self.num_secondary_citations_linker = linker_references['num_secondary_citations']
         self.linker_primary_source_filter = linker_references['primary_source_filter']
         
         # Initialize prompt templates and LLM instances
@@ -405,11 +407,8 @@ class VirtualHavruta:
         '''
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
-        primary_doc_categories = {category.replace("Document Category: ", "") for category in self.primary_source_filter}
-        operator_filter_mode = "$in" if filter_mode == 'primary' else "$nin"
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
             query.lower(), self.top_k,
-            # filter={"docCategory": {operator_filter_mode: primary_doc_categories}}
             )
         # Filter the documents based on whether we're looking for primary or secondary sources
         if filter_mode == 'primary':
@@ -727,7 +726,7 @@ class VirtualHavruta:
             self.logger.warning("MsgID={msg_id}. Cannot retrieve pagerank score. Link is {doc_id}.")
         return pr_score
 
-    def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0) -> str:
+    def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False) -> str:
         '''
         Constructs formatted reference strings and citation lists based on the source relevance and data dictionaries, with specific handling for primary and secondary references.
         
@@ -751,7 +750,10 @@ class VirtualHavruta:
         '''
         # Determine the starting citation number and how many citations to include
         n_citation_base = 0 if ref_mode == 'primary' else n_citation_base
-        num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
+        if is_linker_search:
+            num_citations = self.num_primary_citations_linker if ref_mode == 'primary' else self.num_secondary_citations_linker
+        else:
+            num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
 
         # Lists to hold parts of the final strings
         ref_data_parts = []
@@ -761,7 +763,7 @@ class VirtualHavruta:
 
         # Process only the needed citations
         for n, (k, rel_score) in enumerate(sorted_src_rel_dict.items()):
-            if n >= num_citations:
+            if num_citations > 0 and n >= num_citations:
                 break
 
             n_citation = n_citation_base + n + 1
