@@ -457,7 +457,7 @@ class VirtualHavruta:
                 docs_linker_filtered.append(doc)
         return docs_linker_filtered
     
-    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, filter_mode: str="primary") -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode: str="primary") -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -469,6 +469,8 @@ class VirtualHavruta:
             of relationship, one of 'incoming', 'outgoing', 'both_ways'
         order
             order of neighbors (=number of hops) to include, between 1 and n
+        score_central_node
+            score of the central node, by default 6.0
 
         Returns
         -------
@@ -478,7 +480,7 @@ class VirtualHavruta:
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
         distances = [distance for _, distance in nodes_distances]
-        scores = [self.score_document_by_graph_distance(distance, start_score=6.0, score_decrease_per_hop=0.1) for distance in distances]
+        scores = [self.score_document_by_graph_distance(distance, start_score=score_central_node, score_decrease_per_hop=0.1) for distance in distances]
         return list(zip(docs, scores, strict=True))
 
     def score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float:
@@ -492,7 +494,7 @@ class VirtualHavruta:
         -------
             score
         """
-        return start_score - n_hops * score_decrease_per_hop
+        return max(start_score - n_hops * score_decrease_per_hop, 0.0)
 
     def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode: str = "primary") -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
