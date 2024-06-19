@@ -129,16 +129,16 @@ class VirtualHavruta:
 
         # Initialize Neo4j vector index and retrieve DB configs
         model_api = self.config['openai_model_api']
-        db = self.config['database']
+        config_emb_db = self.config['database']['embed']
         self.neo4j_vector = Neo4jVector.from_existing_index(
             OpenAIEmbeddings(model=model_api['embedding_model']),
             index_name="index",
-            url=db['emb_url'],
-            username=db['emb_username'],
-            password=db['emb_password'],
+            url=config_emb_db['url'],
+            username=config_emb_db['username'],
+            password=config_emb_db['password'],
         )
-        self.top_k = db['emb_top_k']
-        self.neo4j_deeplink = db['neo4j_deeplink']
+        self.top_k = config_emb_db['top_k']
+        self.neo4j_deeplink = self.config['database']['kg']['neo4j_deeplink']
 
         # Initiate logger and pagerank lookup table
         self.logger = logger
@@ -527,11 +527,11 @@ class VirtualHavruta:
             AND {"NOT" if filter_mode == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories
             RETURN DISTINCT neighbor, {i} AS depth
             """
-            with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
+            with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
                 neighbor_nodes, _, _ = driver.execute_query(
                 query,
                 parameters_=query_params,
-                database_=self.config["database"]["kg_name"],)
+                database_=self.config["database"]["kg"]["name"],)
             nodes.extend(neighbor_nodes)
         return nodes
     
@@ -556,11 +556,11 @@ class VirtualHavruta:
         RETURN n.id
         LIMIT 1
         """
-        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
+        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
             id, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["kg_name"],)
+            database_=self.config["database"]["kg"] ["name"],)
         if id:
             return id[0].data()["n.id"]
         else:
@@ -589,11 +589,11 @@ class VirtualHavruta:
         WHERE n.`metadata.url` in $urls
         RETURN n
         """
-        with GraphDatabase.driver(self.config["database"]["kg_url"], auth=(self.config["database"]["kg_username"], self.config["database"]["kg_password"])) as driver:
+        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["kg_name"],)
+            database_=self.config["database"]["kg"]["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
     def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
