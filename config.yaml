@@ -1,17 +1,20 @@
 # DB-related parameters
 database:
-  emb_url: bolt://publicip:7687
-  emb_username: user
-  emb_password: password@dev
-  emb_top_k: 15
-  neo4j_deeplink: "http://neodash.graphapp.io/xyz"
-  kg_url: bolt://publicip:7687
-  kg_username: user
-  kg_password: password@dev
-  kg_order: 1
-  kg_direction: both_ways
-  kg_max_nodes: 10
-  kg_name: db_name
+  embed:
+    url: bolt://publicip:7687
+    username: user
+    password: password@dev
+    top_k: 15
+  kg:
+    url: bolt://publicip_kg:7687
+    username: user
+    password: password@dev
+    order: 1
+    direction: both_ways
+    max_nodes: 10
+    name: db_name
+    neo4j_deeplink: http://neodash.graphapp.io/xyz
+
 
 # Slack-related parameters
 slack:
