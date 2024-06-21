@@ -17,6 +17,8 @@ from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
 import requests
+from time import sleep
+
 
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     """
@@ -1186,6 +1188,30 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
+    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  filter_mode: str,  max_depth: int, msg_id: str = ''):
+        collected_chunks = []
+        candidate_chunks: list[Document] = self.get_seed_chunks(screen_res, enriched_query, msg_id=msg_id, filter_mode=filter_mode)
+        n_accepted_chunks = 0
+        while n_accepted_chunks < max_depth:
+            top_chunk = candidate_chunks.pop(0) # Get the top chunk
+            collected_chunks.append(top_chunk)
+            n_accepted_chunks += 1
+            neighbor_nodes = []
+            top_node = self.get_node_corresponding_to_chunk(top_chunk)
+            neighbor_nodes.append(top_node)
+            neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(url=top_node.metadata["URL"], direction="both_ways", order=1, filter_mode=filter_mode, score_central_node=6.0)
+            neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
+            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
+            # avoid re-adding the top chunk
+            candidate_chunks = [chunk for chunk in candidate_chunks if (chunk.metadata["URL"] != top_chunk.metadata["URL"] or chunk.page_content != top_chunk.page_content)]
+            candidate_chunks = self.rank_chunk_candidates(candidate_chunks, screen_res)
+            if len(candidate_chunks) > max_depth:
+                candidate_chunks = candidate_chunks[:max_depth]
+            elif len(candidate_chunks) == 0:
+                break
+        return collected_chunks
+
+
     def get_seed_chunks(self, screen_res: str, enriched_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
         """Given a query, get the seed chunks.
 
@@ -1218,7 +1244,9 @@ class VirtualHavruta:
         return seed_chunks_ranked
 
     def rank_chunk_candidates(self, chunks: list[Document], query: str) -> list[Document]:
-        """Rank the node candidates based on their relevance to the query.
+        """Rank the node candidates in descending order based on their relevance to the query.
+
+        Return a new list, do not modify the input list.
 
         Parameters
         ----------
@@ -1227,7 +1255,7 @@ class VirtualHavruta:
 
         Returns
         -------
-            ranked nodes
+            ranked chunks
         """
         total_token_count = 0
         semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
@@ -1236,7 +1264,7 @@ class VirtualHavruta:
 
         # Combine the scores
         final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
-        sort_indices = np.argsort(final_ranking_score, axis=0)[::-1][0]
+        sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
         return [chunks[i] for i in sort_indices]
 
 
@@ -1351,6 +1379,7 @@ class VirtualHavruta:
         all_chunks = []
         for node in nodes:
             all_chunks += self.get_chunks_corresponding_to_node(node)
+            sleep(0.2)
         return all_chunks
     
     def get_chunks_corresponding_to_node(self, node: Document) -> list[Document]:
@@ -1374,3 +1403,31 @@ class VirtualHavruta:
         """
         vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
+
+    def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
+        """Given a chunk, return the node corresponding to that chunk.
+
+        Parameters
+        ----------
+        chunk
+            document representing the chunk
+
+        Returns
+        -------
+            document representing the node
+        """
+        query_parameters = {"url": chunk.metadata["URL"], "id": get_id_graph_format(chunk.metadata["seq_num"])}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url`=$url
+        AND n.id=$id
+        RETURN n
+        """
+        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            nodes, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["kg"] ["name"],)
+        assert len(nodes) == 1
+        node = nodes[0]
+        return convert_node_to_doc(node)
