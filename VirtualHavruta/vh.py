@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 from neo4j import GraphDatabase
+import numpy as np
+from langchain.utils.math import cosine_similarity
 from langchain_core.documents import Document
 # Import custom langchain modules for NLP operations and vector search
 from langchain.vectorstores.neo4j_vector import Neo4jVector
@@ -55,6 +57,7 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
     metadata = {k.replace("metadata.", ""):v for k, v in node_data.items() if k.startswith("metadata.")}
     metadata['URL'] = metadata['url']
     del metadata['url']
+    metadata["seq_num"] = get_id_vectordb_format(node_data["id"])
     new_reference_part = metadata["URL"].replace(base_url, "")
     new_category = metadata["docCategory"]
     metadata["source"] = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {metadata['URL']}"
@@ -65,6 +68,16 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
         metadata=metadata
     )
 
+def convert_vector_db_record_to_doc(record) -> Document:
+    assert len(record) == 1
+    record: dict = next(iter(record.values()))
+    page_content = record.pop("text")
+    return Document(
+        page_content=dict_to_yaml_str(page_content)
+        if isinstance(page_content, dict)
+        else page_content,
+        metadata=record
+    )
 
 def get_node_data(node: "Node") -> dict:
     """Given a node from the graph database, return the data of the node.
@@ -87,6 +100,36 @@ def get_node_data(node: "Node") -> dict:
         record: dict = next(iter(record.values()))
     return record
 
+def get_id_graph_format(document_seq_num: int) -> str:
+    """Given a document seq_num  from the vectordb, return the  id of the corresponding node in the graph database.
+
+    Parameters
+    ----------
+    document_seq_num
+        from the vectordb document
+
+    Returns
+    -------
+        id of the document in the graph database
+    """
+    return str(document_seq_num -1)
+
+def get_id_vectordb_format(node_id: str) -> int:
+    """Given a node id from the graph database, return the corresponding document seq_num in the vectordb.
+
+    Parameters
+    ----------
+    node_id
+        id of node 
+
+    Returns
+    -------
+        seq_num of the document in the vectordb
+
+    Raises
+    ------
+    """
+    return int(node_id) + 1
 
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
@@ -1143,3 +1186,191 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
+    def get_seed_chunks(self, screen_res: str, enriched_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
+        """Given a query, get the seed chunks.
+
+        First retrieve the seed nodes: linker results (or as fallback the chunks with the highest semantic similarity).
+        Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
+        Rank the chunks.
+
+        Parameters
+        ----------
+        screen_res
+            user query
+        enriched_query
+            enriched query
+        msg_id
+            message id for slack, optional
+
+        Returns
+        -------
+            ranked (descending) list of seed chunks
+        """
+        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
+        if seeds:
+            seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
+        else:
+            seed_chunks = self.neo4j_vector.similarity_search(
+                screen_res.lower(), self.top_k,
+            )
+
+        seed_chunks_ranked = self.rank_chunk_candidates(seed_chunks, screen_res)
+        return seed_chunks_ranked
+
+    def rank_chunk_candidates(self, chunks: list[Document], query: str) -> list[Document]:
+        """Rank the node candidates based on their relevance to the query.
+
+        Parameters
+        ----------
+        chunks
+            langchain documents
+
+        Returns
+        -------
+            ranked nodes
+        """
+        total_token_count = 0
+        semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
+        reference_classes: np.array = self.get_reference_class(chunks, query)
+        page_rank_scores: np.array = self.get_page_rank_scores(chunks)
+
+        # Combine the scores
+        final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
+        sort_indices = np.argsort(final_ranking_score, axis=0)[::-1][0]
+        return [chunks[i] for i in sort_indices]
+
+
+    def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
+        """Compute the semantic similarity between a document and a query.
+
+        Parameters
+        ----------
+        documents
+            langchain documents
+        query
+            query string
+
+        Returns
+        -------
+            similarity score
+        """
+        query_embedding = np.array(self.neo4j_vector.embedding.embed_query(text=query)).reshape(1, -1)
+        document_embeddings = np.array([doc.metadata["embedding"] for doc in documents])
+        if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
+            similarity = cosine_similarity(query_embedding, document_embeddings)
+            relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
+            return relevance_score_function(similarity).reshape(-1, 1)
+        else:
+            raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
+
+    def get_reference_class(self, documents: list[Document], query: str) -> np.array:
+        """Get the reference class for each document based on the query.
+
+        Parameters
+        ----------
+        documents
+            langchain documents
+        query
+            query string
+
+        Returns
+        -------
+            array of reference classes
+        """
+        reference_classes = []
+        for doc in documents:
+            ref_data = doc.page_content + "... --Origin of this " + doc.metadata["source"]
+            ref_class, _ = self.classification(query, ref_data)
+            reference_classes.append(ref_class)
+        return np.array(reference_classes).reshape(-1, 1)
+
+    def get_page_rank_scores(self, documents: list[Document]) -> np.array:
+        """Get the PageRank scores for each document.
+
+        Secondary references are assigned a default PageRank score of 1.0 (neutral under multiplication)
+
+        Parameters
+        ----------
+        documents
+            langchain document type
+        Returns
+        -------
+            array of page rank scores
+        """
+        page_rank_scores = []
+        for doc in documents:
+            if self.is_primary_document(doc):
+                page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
+            else:
+                page_rank_score = 1.0
+            page_rank_scores.append(page_rank_score)
+        return np.array(page_rank_scores).reshape(-1, 1)
+
+    def is_primary_document(self, doc: Document) -> bool:
+        """Check if a document is a primary document.
+
+        Parameters
+        ----------
+        doc
+            langchain document
+
+        Returns
+        -------
+            bool
+        """
+        return any(s in doc.metadata['source'] for s in self.primary_source_filter)
+
+    def get_document_id_vector_db_format(self, node: "Node") -> int:
+        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
+
+        Parameters
+        ----------
+        node
+            from the graph database
+
+        Returns
+        -------
+            id of the document in the vector database
+        """
+        record: dict = get_node_data(node)
+        id_graph_format = record["id"]
+        return int(id_graph_format) + 1
+
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document]) -> list[Document]:
+        """Given a list of nodes, return the chunks corresponding to that node.
+
+        Parameters
+        ----------
+        nodes
+            list of graph nodes
+
+        Returns
+        -------
+            list of chunks corresponding to the nodes
+        """
+        all_chunks = []
+        for node in nodes:
+            all_chunks += self.get_chunks_corresponding_to_node(node)
+        return all_chunks
+    
+    def get_chunks_corresponding_to_node(self, node: Document) -> list[Document]:
+        """Given a node, return the chunks corresponding to that node.
+
+        Parameters
+        ----------
+        node
+            id of the node
+
+        Returns
+        -------
+            id of the chunks corresponding to the node
+        """
+        query_parameters = {"url": node.metadata["URL"], "seq_num": node.metadata["seq_num"]}
+        query_string = """
+        MATCH (n)
+        WHERE n.seq_num = $seq_num
+        AND n.URL = $url
+        RETURN n
+        """
+        vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
+        return [convert_vector_db_record_to_doc(record) for record in vector_records]
