@@ -502,7 +502,7 @@ class VirtualHavruta:
                 docs_linker_filtered.append(doc)
         return docs_linker_filtered
     
-    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode: str="primary") -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode: str="primary", msg_id: str = "") -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -521,7 +521,8 @@ class VirtualHavruta:
         -------
             list of (document, score)
         """
-        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode=filter_mode)
+        self.logger.info(f"MsgID={msg_id}. Starting get_retrieval_results_knowledge_graph.")
+        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode=filter_mode, msg_id=msg_id)
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
         distances = [distance for _, distance in nodes_distances]
@@ -541,7 +542,7 @@ class VirtualHavruta:
         """
         return max(start_score - n_hops * score_decrease_per_hop, 0.0)
 
-    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode: str = "primary") -> list[tuple["Node", int]]:
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode: str = "primary", msg_id: str = "") -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Parameters
@@ -557,6 +558,7 @@ class VirtualHavruta:
         -------
             list of (node, distance) tuples, where distance is the number of hops from the central node
         """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving graph neighbors for url: {url}.")
         assert relationship in ["incoming", "outgoing", "both_ways"]
         start_node_operator: str = "<-" if relationship == "incoming" else "-"
         related_node_operator: str = "->" if relationship == "outgoing" else "-"
@@ -1189,6 +1191,28 @@ class VirtualHavruta:
         return final_descriptions
 
     def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str,  max_depth: int, msg_id: str = ''):
+        """_summary_
+
+        Parameters
+        ----------
+        screen_res
+            _description_
+        enriched_query
+            _description_
+        scripture_query
+            _description_
+        filter_mode
+            _description_
+        max_depth
+            _description_
+        msg_id, optional
+            _description_, by default ''
+
+        Returns
+        -------
+            _description_
+        """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
         collected_chunks = []
         candidate_chunks, token_count = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
@@ -1206,7 +1230,7 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if (chunk.metadata["URL"] != top_chunk.metadata["URL"] or chunk.page_content != top_chunk.page_content)]
-            candidate_chunks, token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query)
+            candidate_chunks, token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query, msg_id=msg_id)
             total_token_count += token_count
             if len(candidate_chunks) > max_depth:
                 candidate_chunks = candidate_chunks[:max_depth]
@@ -1237,6 +1261,7 @@ class VirtualHavruta:
         -------
             ranked (descending) list of seed chunks
         """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_seed_chunks for KG search.")
         total_token_count = 0
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
         if seeds:
@@ -1251,7 +1276,7 @@ class VirtualHavruta:
         total_token_count += token_count
         return seed_chunks_ranked, total_token_count
 
-    def rank_chunk_candidates(self, chunks: list[Document], query: str) -> list[Document]:
+    def rank_chunk_candidates(self, chunks: list[Document], query: str, msg_id: str = "") -> list[Document]:
         """Rank the node candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
@@ -1265,6 +1290,7 @@ class VirtualHavruta:
         -------
             ranked chunks
         """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates for KG search.")
         total_token_count = 0
         if len(chunks) <= 1:
             return chunks.copy(), total_token_count
