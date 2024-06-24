@@ -18,7 +18,7 @@ from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
 import requests
 from time import sleep
-
+import neo4j
 
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     """
@@ -1236,9 +1236,10 @@ class VirtualHavruta:
         if seeds:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         else:
-            seed_chunks = self.neo4j_vector.similarity_search(
+            seed_chunks_vector_db = self.neo4j_vector.similarity_search(
                 screen_res.lower(), self.top_k,
             )
+            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
 
         seed_chunks_ranked = self.rank_chunk_candidates(seed_chunks, screen_res)
         return seed_chunks_ranked
@@ -1401,7 +1402,12 @@ class VirtualHavruta:
         AND n.URL = $url
         RETURN n
         """
-        vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
+        try:
+            vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
+        except neo4j.exceptions.ServiceUnavailable:
+            self.logger.warning("Neo4j database is unavailable. Retrying.")
+            sleep(1)
+            vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
     def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
