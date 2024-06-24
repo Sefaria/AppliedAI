@@ -1189,8 +1189,10 @@ class VirtualHavruta:
         return final_descriptions
 
     def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str,  max_depth: int, msg_id: str = ''):
+        total_token_count = 0
         collected_chunks = []
-        candidate_chunks: list[Document] = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
+        candidate_chunks, token_count = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
+        total_token_count += token_count
         n_accepted_chunks = 0
         while n_accepted_chunks < max_depth:
             top_chunk = candidate_chunks.pop(0) # Get the top chunk
@@ -1204,12 +1206,13 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if (chunk.metadata["URL"] != top_chunk.metadata["URL"] or chunk.page_content != top_chunk.page_content)]
-            candidate_chunks = self.rank_chunk_candidates(candidate_chunks, query=scripture_query)
+            candidate_chunks, token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query)
+            total_token_count += token_count
             if len(candidate_chunks) > max_depth:
                 candidate_chunks = candidate_chunks[:max_depth]
             elif len(candidate_chunks) == 0:
                 break
-        return collected_chunks
+        return collected_chunks, total_token_count
 
 
     def get_seed_chunks(self, screen_res: str, enriched_query: str, scripture_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
@@ -1234,6 +1237,7 @@ class VirtualHavruta:
         -------
             ranked (descending) list of seed chunks
         """
+        total_token_count = 0
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
         if seeds:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
@@ -1243,8 +1247,9 @@ class VirtualHavruta:
             )
             seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
 
-        seed_chunks_ranked = self.rank_chunk_candidates(seed_chunks, screen_res)
-        return seed_chunks_ranked
+        seed_chunks_ranked, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
+        total_token_count += token_count
+        return seed_chunks_ranked, total_token_count
 
     def rank_chunk_candidates(self, chunks: list[Document], query: str) -> list[Document]:
         """Rank the node candidates in descending order based on their relevance to the query.
@@ -1260,17 +1265,19 @@ class VirtualHavruta:
         -------
             ranked chunks
         """
-        if len(chunks) >= 1:
-            return chunks.copy()
         total_token_count = 0
+        if len(chunks) <= 1:
+            return chunks.copy(), total_token_count
         semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
-        reference_classes: np.array = self.get_reference_class(chunks, query)
+        reference_classes, token_count = self.get_reference_class(chunks, query)
+        total_token_count += token_count
         page_rank_scores: np.array = self.get_page_rank_scores(chunks)
 
         # Combine the scores
         final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
         sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
-        return [chunks[i] for i in sort_indices]
+        sorted_chunks = [chunks[i] for i in sort_indices]
+        return sorted_chunks, total_token_count
 
 
     def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
@@ -1311,11 +1318,13 @@ class VirtualHavruta:
             array of reference classes
         """
         reference_classes = []
+        total_token_count = 0
         for doc in documents:
             ref_data = doc.page_content + "... --Origin of this " + doc.metadata["source"]
-            ref_class, _ = self.classification(query, ref_data)
+            ref_class, token_count = self.classification(query, ref_data)
+            total_token_count += token_count
             reference_classes.append(ref_class)
-        return np.array(reference_classes).reshape(-1, 1)
+        return np.array(reference_classes).reshape(-1, 1), total_token_count
 
     def get_page_rank_scores(self, documents: list[Document]) -> np.array:
         """Get the PageRank scores for each document.
