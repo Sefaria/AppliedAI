@@ -479,7 +479,7 @@ class VirtualHavruta:
         enriched_query
             The enriched query string used to retrieve documents.
         msg_id, optional
-            _description_, by default ''
+            for slack bot, by default ''
         filter_mode, optional
             Mode for filtering search results; valid options are 'primary' or 'secondary'. Defaults to 'primary'.
         url_prefix, optional
@@ -1188,9 +1188,9 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
-    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  filter_mode: str,  max_depth: int, msg_id: str = ''):
+    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str,  max_depth: int, msg_id: str = ''):
         collected_chunks = []
-        candidate_chunks: list[Document] = self.get_seed_chunks(screen_res, enriched_query, msg_id=msg_id, filter_mode=filter_mode)
+        candidate_chunks: list[Document] = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
         n_accepted_chunks = 0
         while n_accepted_chunks < max_depth:
             top_chunk = candidate_chunks.pop(0) # Get the top chunk
@@ -1204,7 +1204,7 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if (chunk.metadata["URL"] != top_chunk.metadata["URL"] or chunk.page_content != top_chunk.page_content)]
-            candidate_chunks = self.rank_chunk_candidates(candidate_chunks, screen_res)
+            candidate_chunks = self.rank_chunk_candidates(candidate_chunks, query=scripture_query)
             if len(candidate_chunks) > max_depth:
                 candidate_chunks = candidate_chunks[:max_depth]
             elif len(candidate_chunks) == 0:
@@ -1212,7 +1212,7 @@ class VirtualHavruta:
         return collected_chunks
 
 
-    def get_seed_chunks(self, screen_res: str, enriched_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
+    def get_seed_chunks(self, screen_res: str, enriched_query: str, scripture_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
         """Given a query, get the seed chunks.
 
         First retrieve the seed nodes: linker results (or as fallback the chunks with the highest semantic similarity).
@@ -1225,6 +1225,8 @@ class VirtualHavruta:
             user query
         enriched_query
             enriched query
+        scripture_query
+            scripture query
         msg_id
             message id for slack, optional
 
@@ -1237,7 +1239,7 @@ class VirtualHavruta:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         else:
             seed_chunks_vector_db = self.neo4j_vector.similarity_search(
-                screen_res.lower(), self.top_k,
+                scripture_query, self.top_k,
             )
             seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
 
@@ -1258,6 +1260,8 @@ class VirtualHavruta:
         -------
             ranked chunks
         """
+        if len(chunks) >= 1:
+            return chunks.copy()
         total_token_count = 0
         semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
         reference_classes: np.array = self.get_reference_class(chunks, query)
