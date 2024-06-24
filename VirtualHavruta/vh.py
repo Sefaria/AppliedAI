@@ -1196,21 +1196,21 @@ class VirtualHavruta:
         Parameters
         ----------
         screen_res
-            _description_
+            The screen_res query, which is used as part of the query to the Sefaria Linker.
         enriched_query
-            _description_
+            The enriched query string used to retrieve documents.
         scripture_query
-            _description_
+            query used to retrieve documents from the vector database
         filter_mode
-            _description_
+            for 'primary' or 'secondary' references
         max_depth
-            _description_
+            number of chunks to retrieve
         msg_id, optional
-            _description_, by default ''
+           identifier for slack message, by default ''
 
         Returns
         -------
-            _description_
+            list of sorted chunks, sorted by relevance in descending order, length=max_depth
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
@@ -1409,24 +1409,6 @@ class VirtualHavruta:
 
         Parameters
         ----------
-        nodes
-            list of graph nodes
-
-        Returns
-        -------
-            list of chunks corresponding to the nodes
-        """
-        all_chunks = []
-        for node in nodes:
-            all_chunks += self.get_chunks_corresponding_to_node(node)
-            sleep(0.2)
-        return all_chunks
-    
-    def get_chunks_corresponding_to_node(self, node: Document) -> list[Document]:
-        """Given a node, return the chunks corresponding to that node.
-
-        Parameters
-        ----------
         node
             id of the node
 
@@ -1434,19 +1416,22 @@ class VirtualHavruta:
         -------
             id of the chunks corresponding to the node
         """
-        query_parameters = {"url": node.metadata["URL"], "seq_num": node.metadata["seq_num"]}
+        query_parameters = [
+            {"seq_num": node.metadata["seq_num"], "url": node.metadata["URL"]}
+            for node in nodes
+        ]
         query_string = """
+        UNWIND $params AS param
         MATCH (n)
-        WHERE n.seq_num = $seq_num
-        AND n.URL = $url
+        WHERE n.seq_num = param.seq_num AND n.URL = param.url
         RETURN n
         """
         try:
-            vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
+            vector_records = self.neo4j_vector.query(query_string, params={"params": query_parameters})
         except neo4j.exceptions.ServiceUnavailable:
             self.logger.warning("Neo4j database is unavailable. Retrying.")
             sleep(1)
-            vector_records = self.neo4j_vector.query(query_string, params=query_parameters)
+            vector_records = self.neo4j_vector.query(query_string, params={"params": query_parameters})
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
     def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
