@@ -76,7 +76,7 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
 def convert_vector_db_record_to_doc(record) -> ChunkDocument:
     assert len(record) == 1
     record: dict = next(iter(record.values()))
-    page_content = record.pop("text")
+    page_content = record.pop("text", None)
     return ChunkDocument(
         page_content=dict_to_yaml_str(page_content)
         if isinstance(page_content, dict)
@@ -1275,12 +1275,13 @@ class VirtualHavruta:
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_seed_chunks for KG search.")
         total_token_count = 0
-        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
+        # seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
+        seeds = None
         if seeds:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         else:
             seed_chunks_vector_db = self.neo4j_vector.similarity_search(
-                scripture_query, k=self.config["kg"]["k_seeds"],
+                scripture_query, k=self.config["database"]["kg"]["k_seeds"],
             )
             seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
 
@@ -1416,13 +1417,15 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
 
-    def get_chunks_corresponding_to_nodes(self, nodes: list[Document]) -> list[Document]:
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20) -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
         Parameters
         ----------
         node
             id of the node
+        batch_size
+            number of documents to retrieve per query, avoid memory issues
 
         Returns
         -------
@@ -1438,12 +1441,15 @@ class VirtualHavruta:
         WHERE n.seq_num = param.seq_num AND n.URL = param.url
         RETURN n
         """
-        try:
-            vector_records = self.neo4j_vector.query(query_string, params={"params": query_parameters})
-        except neo4j.exceptions.ServiceUnavailable:
-            self.logger.warning("Neo4j database is unavailable. Retrying.")
-            sleep(1)
-            vector_records = self.neo4j_vector.query(query_string, params={"params": query_parameters})
+        vector_records = []
+        for i in range(0, len(query_parameters), batch_size):
+            try:
+                vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
+            except neo4j.exceptions.ServiceUnavailable:
+                self.logger.warning("Neo4j database is unavailable. Retrying.")
+                sleep(1)
+                vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
+            vector_records += vector_records_batch
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
     def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
