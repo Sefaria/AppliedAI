@@ -20,6 +20,9 @@ import requests
 from time import sleep
 import neo4j
 
+
+from VirtualHavruta.document import ChunkDocument
+
 def dict_to_yaml_str(input_dict: dict, indent: int = 0) -> str:
     """
     Convert a dictionary to a YAML-like string without using external libraries.
@@ -65,16 +68,16 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
     metadata["source"] = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {metadata['URL']}"
 
     page_content = dict_to_yaml_str(node_data.get("text")) if isinstance(node_data.get("text"), dict) else node_data.get("text", "")
-    return Document(
+    return ChunkDocument(
         page_content=page_content,
         metadata=metadata
     )
 
-def convert_vector_db_record_to_doc(record) -> Document:
+def convert_vector_db_record_to_doc(record) -> ChunkDocument:
     assert len(record) == 1
     record: dict = next(iter(record.values()))
     page_content = record.pop("text")
-    return Document(
+    return ChunkDocument(
         page_content=dict_to_yaml_str(page_content)
         if isinstance(page_content, dict)
         else page_content,
@@ -1190,8 +1193,10 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
-    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str,  max_depth: int, msg_id: str = ''):
-        """_summary_
+    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str, msg_id: str = ''):
+        """Find seed chunks based upon linker results or semantic similarity, then traverse the graph to find related chunks in the local neighborhood.
+
+        Details: https://wwwmatthes.in.tum.de/pages/3bd5tm02lihx/Master-s-Thesis-Philippe-Saad, Thesis p. 28f.
 
         Parameters
         ----------
@@ -1203,14 +1208,12 @@ class VirtualHavruta:
             query used to retrieve documents from the vector database
         filter_mode
             for 'primary' or 'secondary' references
-        max_depth
-            number of chunks to retrieve
         msg_id, optional
            identifier for slack message, by default ''
 
         Returns
         -------
-            list of sorted chunks, sorted by relevance in descending order, length=max_depth
+            list of sorted chunks, sorted by relevance in descending order
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
@@ -1218,22 +1221,31 @@ class VirtualHavruta:
         candidate_chunks, token_count = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
         total_token_count += token_count
         n_accepted_chunks = 0
-        while n_accepted_chunks < max_depth:
+        while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:
             top_chunk = candidate_chunks.pop(0) # Get the top chunk
             collected_chunks.append(top_chunk)
             n_accepted_chunks += 1
+            # avoid final loop execution which does not add a chunk to collected_chunks anyways
+            if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
+                break
             neighbor_nodes = []
             top_node = self.get_node_corresponding_to_chunk(top_chunk)
             neighbor_nodes.append(top_node)
-            neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(url=top_node.metadata["URL"], direction="both_ways", order=1, filter_mode=filter_mode, score_central_node=6.0)
+            neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
+                url=top_node.metadata["URL"],
+                direction=self.config["database"]["kg"]["direction"],
+                order=self.config["database"]["kg"]["order"],
+                filter_mode=filter_mode,
+                score_central_node=6.0
+            )
             neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
-            candidate_chunks = [chunk for chunk in candidate_chunks if (chunk.metadata["URL"] != top_chunk.metadata["URL"] or chunk.page_content != top_chunk.page_content)]
+            candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
             candidate_chunks, token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query, msg_id=msg_id)
             total_token_count += token_count
-            if len(candidate_chunks) > max_depth:
-                candidate_chunks = candidate_chunks[:max_depth]
+            if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
+                candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
             elif len(candidate_chunks) == 0:
                 break
         return collected_chunks, total_token_count
@@ -1268,7 +1280,7 @@ class VirtualHavruta:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         else:
             seed_chunks_vector_db = self.neo4j_vector.similarity_search(
-                scripture_query, self.top_k,
+                scripture_query, k=self.config["kg"]["k_seeds"],
             )
             seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
 
