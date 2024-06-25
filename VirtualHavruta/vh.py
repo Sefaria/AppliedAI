@@ -1275,8 +1275,7 @@ class VirtualHavruta:
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_seed_chunks for KG search.")
         total_token_count = 0
-        # seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
-        seeds = None
+        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
         if seeds:
             seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         else:
