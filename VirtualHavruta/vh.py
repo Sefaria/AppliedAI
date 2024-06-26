@@ -665,61 +665,20 @@ class VirtualHavruta:
         Notes:
         The function is robust to variations in data and manages complex scenarios where multiple references may have the same URL but different content or sources. It effectively manages and logs all operations to ensure data integrity and traceability.
         '''
-        # Initialize dictionaries and tok_count to store the data, references, relevance scores, and token count
-        src_data_dict = {}
-        src_ref_dict = {}
-        src_rel_dict = {}
         total_tokens = 0
-        
-        # Iterate over each item in the retrieval results
-        for n, (d, sim_score) in enumerate(retrieval_res):
-            # Concatenate reference data and its source
-            ref_data = d.page_content + "... --Origin of this " + d.metadata["source"]
-            # Log the reference data and its link
-            self.logger.info(f"MsgID={msg_id}. \n{n+1} RefData={ref_data} \nLink is {d.metadata['URL']}. Similarity Score is {sim_score}")
-            # Classify the reference data and get the token count
-            ref_class, tok_count = self.classification(query, ref_data, msg_id)
-            total_tokens += tok_count
-    
-            # If the reference class is not None or 0 (i.e., it is relevant)
-            if ref_class:
-                if filter_mode == 'primary':
-                    # Retrieve the PageRank score for the URL of the current reference
-                    pagerank = self.retrieve_pr_score(d.metadata["URL"], msg_id)
-                    # Calculate the relevance score based on classification, similarity, and PageRank
-                    rel_score = ref_class * sim_score * pagerank
-                else:
-                    rel_score = ref_class * sim_score
-    
-                # If the URL is not already in src_data_dict, add all reference information
-                if d.metadata["URL"] not in src_data_dict:
-                    src_data_dict[d.metadata["URL"]] = d.page_content
-                    src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
-                    src_rel_dict[d.metadata["URL"]] = rel_score
-                else:
-                    # If the URL is already present, handle different versions or sources with the same URL
-                    existing_content = src_data_dict[d.metadata["URL"]]
-                    # Concatenate page content for the same URL
-                    src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
-    
-                    # Avoid duplicate source listings by separating with a pipe "|"
-                    existing_ref = src_ref_dict[d.metadata["URL"]]
-                    existing_ref_list = existing_ref.split(" | ")
-                    if d.metadata["source"] not in existing_ref_list:
-                        src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
-    
-                    # Update the relevance score with the maximum score between existing and new
-                    existing_rel_score = src_rel_dict[d.metadata["URL"]]
-                    src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
-    
-        # Sort the source relevance dictionary based on scores in descending order
-        sorted_src_rel_dict = dict(
-            sorted(src_rel_dict.items(), key=operator.itemgetter(1), reverse=True)
-        )
-    
-        # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
+
+        documents = [d for d, _ in retrieval_res]
+        semantic_similarity_scores = [sim_score for _, sim_score in retrieval_res]
+        sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(documents,
+                                                                              query=query,
+                                                                              semantic_similarity_scores=semantic_similarity_scores,
+                                                                              msg_id=msg_id)
+        total_tokens += token_count
+
+        retrieval_res_sorted = list(zip(sorted_docs, sorted_ranking_scores))
+        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_sorted, msg_id=msg_id)
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
-    
+
     def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str="") -> tuple[dict, dict, dict]:
         """Merge chunks with the same url.
 
@@ -1244,7 +1203,9 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
-    def graph_traversal_retriever(self, screen_res: str, scripture_query: str,
+    def graph_traversal_retriever(self, screen_res: str,
+                                  scripture_query: str,
+                                  enriched_query: str,
                                   filter_mode: str,
                                   linker_results: list[dict]|None = None,
                                   semantic_search_results: list[tuple[Document, float]]|None = None,
@@ -1281,7 +1242,7 @@ class VirtualHavruta:
         else:
             raise ValueError("One of linker results or semantic search results need to be provided.")
         # rank seed chunks
-        candidate_chunks, candidate_rankings, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
+        candidate_chunks, candidate_rankings, token_count = self.rank_documents(seed_chunks, query=enriched_query)
         total_token_count += token_count
 
         n_accepted_chunks = 0
@@ -1308,7 +1269,7 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
-            candidate_chunks, candidate_rankings,  token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query, msg_id=msg_id)
+            candidate_chunks, candidate_rankings,  token_count = self.rank_documents(candidate_chunks, query=scripture_query, msg_id=msg_id)
             total_token_count += token_count
             if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
                 candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
@@ -1346,7 +1307,8 @@ class VirtualHavruta:
         return seed_chunks
 
 
-    def rank_chunk_candidates(self, chunks: list[Document], query: str, msg_id: str = "") -> list[Document]:
+    def rank_documents(self, chunks: list[Document], query: str, semantic_similarity_scores: list[float]|None = None,
+                              msg_id: str = "") -> list[Document]:
         """Rank the node candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
@@ -1356,15 +1318,16 @@ class VirtualHavruta:
         chunks
             langchain documents
 
+        semantic_similarity_scores
+            optional, provide if available to save some computational costs
         Returns
         -------
             ranked chunks
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates for KG search.")
         total_token_count = 0
-        if len(chunks) <= 1:
-            return chunks.copy(), total_token_count
-        semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
+        if not semantic_similarity_scores:
+            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
         reference_classes, token_count = self.get_reference_class(chunks, query)
         total_token_count += token_count
         page_rank_scores: np.array = self.get_page_rank_scores(chunks)
