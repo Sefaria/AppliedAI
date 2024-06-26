@@ -468,7 +468,7 @@ class VirtualHavruta:
         retrieval_res = list(filter(predicate, retrieved_docs))
         return retrieval_res
     
-    def retrieve_nodes_matching_linker_results(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary',
+    def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
                                                url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
         """Retrieve nodes corresponding to linker results given a query.
 
@@ -492,7 +492,6 @@ class VirtualHavruta:
         -------
            list of documents
         """
-        linker_results: list[dict] = self.retrieve_docs_linker(screen_res, enriched_query, msg_id=msg_id, filter_mode=filter_mode)
         urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
                                     for linker_res in linker_results})
         nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
@@ -1218,7 +1217,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
         collected_chunks = []
-        candidate_chunks, token_count = self.get_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
+        candidate_chunks, token_count = self.get_linker_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
         total_token_count += token_count
         n_accepted_chunks = 0
         while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:
@@ -1251,8 +1250,9 @@ class VirtualHavruta:
         return collected_chunks, total_token_count
 
 
-    def get_seed_chunks(self, screen_res: str, enriched_query: str, scripture_query: str, filter_mode: str="primary", msg_id: str="") -> list[Document]:
-        """Given a query, get the seed chunks.
+    def get_linker_seed_chunks(self, screen_res: str, linker_results: list[dict],
+                        filter_mode: str="primary", msg_id: str="") -> list[Document]:
+        """Given linker results, get the corresponding seed chunks.
 
         First retrieve the seed nodes: linker results (or as fallback the chunks with the highest semantic similarity).
         Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
@@ -1262,8 +1262,6 @@ class VirtualHavruta:
         ----------
         screen_res
             user query
-        enriched_query
-            enriched query
         scripture_query
             scripture query
         msg_id
@@ -1273,17 +1271,10 @@ class VirtualHavruta:
         -------
             ranked (descending) list of seed chunks
         """
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_seed_chunks for KG search.")
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_linker_seed_chunks for KG search.")
         total_token_count = 0
-        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(screen_res, enriched_query, msg_id, filter_mode=filter_mode)
-        if seeds:
-            seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
-        else:
-            seed_chunks_vector_db = self.neo4j_vector.similarity_search(
-                scripture_query, k=self.config["database"]["kg"]["k_seeds"],
-            )
-            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
-
+        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
+        seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         seed_chunks_ranked, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
         total_token_count += token_count
         return seed_chunks_ranked, total_token_count
