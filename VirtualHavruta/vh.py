@@ -720,6 +720,58 @@ class VirtualHavruta:
         # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
     
+    def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str="") -> tuple[dict, dict, dict]:
+        """Merge chunks with the same url.
+
+        This can occur for two reasons:
+        1. Different graph nodes with the same URL.
+        2. The same graph node split into multiple chunks.
+
+        Parameters
+        ----------
+        retrieval_res
+            list of document, ranking_score tuples
+        msg_id, optional
+            slack msg id, by default ""
+
+        Returns
+        -------
+            A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary.
+        """
+        src_data_dict = {}
+        src_ref_dict = {}
+        src_rel_dict = {}
+        # Iterate over each item in the retrieval results
+        for (d, rel_score) in retrieval_res:
+            # If the URL is not already in src_data_dict, add all reference information
+            if d.metadata["URL"] not in src_data_dict:
+                src_data_dict[d.metadata["URL"]] = d.page_content
+                src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
+                src_rel_dict[d.metadata["URL"]] = rel_score
+            else:
+                # If the URL is already present, handle different versions or sources with the same URL
+                existing_content = src_data_dict[d.metadata["URL"]]
+                # Concatenate page content for the same URL
+                src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
+
+                # Avoid duplicate source listings by separating with a pipe "|"
+                existing_ref = src_ref_dict[d.metadata["URL"]]
+                existing_ref_list = existing_ref.split(" | ")
+                if d.metadata["source"] not in existing_ref_list:
+                    src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
+
+                # Update the relevance score with the maximum score between existing and new
+                existing_rel_score = src_rel_dict[d.metadata["URL"]]
+                src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
+
+        # Sort the source relevance dictionary based on scores in descending order
+        sorted_src_rel_dict = dict(
+            sorted(src_rel_dict.items(), key=operator.itemgetter(1), reverse=True)
+        )
+
+        # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
+        return sorted_src_rel_dict, src_data_dict, src_ref_dict
+
     def classification(self, query: str, ref_data: str, msg_id: str=''):
         '''
         Classifies the provided query and reference data using a chained language model, returning the classification result and token count.
@@ -1263,10 +1315,9 @@ class VirtualHavruta:
                 candidate_rankings = candidate_rankings[:self.config["database"]["kg"]["max_depth"]]
             elif len(candidate_chunks) == 0:
                 break
+        retrieval_res_kg = sorted(zip(collected_chunks, ranking_scores_collected_chunks), key=lambda pair: pair[1], reverse=True)
 
-        collected_chunks_sorted = sort_list_by_other(collected_chunks, ranking_scores_collected_chunks, reverse=True)
-        ranking_scores_sorted = sorted(ranking_scores_collected_chunks, reverse=True)
-        return collected_chunks_sorted, ranking_scores_sorted,  total_token_count
+        return retrieval_res_kg,  total_token_count
 
 
     def get_linker_seed_chunks(self, screen_res: str, linker_results: list[dict],
