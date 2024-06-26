@@ -1192,7 +1192,11 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
-    def graph_traversal_retriever(self, screen_res: str, enriched_query: str,  scripture_query: str, filter_mode: str, msg_id: str = ''):
+    def graph_traversal_retriever(self, screen_res: str, scripture_query: str,
+                                  filter_mode: str,
+                                  linker_results: list[dict]|None = None,
+                                  semantic_search_results: list[tuple[Document, float]]|None = None,
+                                  msg_id: str = ''):
         """Find seed chunks based upon linker results or semantic similarity, then traverse the graph to find related chunks in the local neighborhood.
 
         Details: https://wwwmatthes.in.tum.de/pages/3bd5tm02lihx/Master-s-Thesis-Philippe-Saad, Thesis p. 28f.
@@ -1201,8 +1205,6 @@ class VirtualHavruta:
         ----------
         screen_res
             The screen_res query, which is used as part of the query to the Sefaria Linker.
-        enriched_query
-            The enriched query string used to retrieve documents.
         scripture_query
             query used to retrieve documents from the vector database
         filter_mode
@@ -1214,11 +1216,21 @@ class VirtualHavruta:
         -------
             list of sorted chunks, sorted by relevance in descending order
         """
+        # get seed chunks
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
         collected_chunks = []
-        candidate_chunks, token_count = self.get_linker_seed_chunks(screen_res, enriched_query, scripture_query=scripture_query, msg_id=msg_id, filter_mode=filter_mode)
+        if linker_results:
+            seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, screen_res=screen_res, msg_id=msg_id)
+        elif semantic_search_results:
+            seed_chunks_vector_db = [doc for doc, _ in semantic_search_results]
+            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
+        else:
+            raise ValueError("One of linker results or semantic search results need to be provided.")
+        # rank seed chunks
+        candidate_chunks, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
         total_token_count += token_count
+
         n_accepted_chunks = 0
         while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:
             top_chunk = candidate_chunks.pop(0) # Get the top chunk
@@ -1256,7 +1268,6 @@ class VirtualHavruta:
 
         First retrieve the seed nodes: linker results (or as fallback the chunks with the highest semantic similarity).
         Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
-        Rank the chunks.
 
         Parameters
         ----------
@@ -1269,15 +1280,13 @@ class VirtualHavruta:
 
         Returns
         -------
-            ranked (descending) list of seed chunks
+            list of seed chunks
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_linker_seed_chunks for KG search.")
-        total_token_count = 0
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
         seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
-        seed_chunks_ranked, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
-        total_token_count += token_count
-        return seed_chunks_ranked, total_token_count
+        return seed_chunks
+
 
     def rank_chunk_candidates(self, chunks: list[Document], query: str, msg_id: str = "") -> list[Document]:
         """Rank the node candidates in descending order based on their relevance to the query.
