@@ -1220,6 +1220,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
         total_token_count = 0
         collected_chunks = []
+        ranking_scores_collected_chunks = []
         if linker_results:
             seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, screen_res=screen_res, msg_id=msg_id)
         elif semantic_search_results:
@@ -1228,13 +1229,15 @@ class VirtualHavruta:
         else:
             raise ValueError("One of linker results or semantic search results need to be provided.")
         # rank seed chunks
-        candidate_chunks, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
+        candidate_chunks, candidate_rankings, token_count = self.rank_chunk_candidates(seed_chunks, screen_res)
         total_token_count += token_count
 
         n_accepted_chunks = 0
         while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:
             top_chunk = candidate_chunks.pop(0) # Get the top chunk
             collected_chunks.append(top_chunk)
+            local_top_score = candidate_rankings.pop(0)
+            ranking_scores_collected_chunks.append(local_top_score)
             n_accepted_chunks += 1
             # avoid final loop execution which does not add a chunk to collected_chunks anyways
             if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
@@ -1253,13 +1256,17 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
-            candidate_chunks, token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query, msg_id=msg_id)
+            candidate_chunks, candidate_rankings,  token_count = self.rank_chunk_candidates(candidate_chunks, query=scripture_query, msg_id=msg_id)
             total_token_count += token_count
             if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
                 candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
+                candidate_rankings = candidate_rankings[:self.config["database"]["kg"]["max_depth"]]
             elif len(candidate_chunks) == 0:
                 break
-        return collected_chunks, total_token_count
+
+        collected_chunks_sorted = sort_list_by_other(collected_chunks, ranking_scores_collected_chunks, reverse=True)
+        ranking_scores_sorted = sorted(ranking_scores_collected_chunks, reverse=True)
+        return collected_chunks_sorted, ranking_scores_sorted,  total_token_count
 
 
     def get_linker_seed_chunks(self, screen_res: str, linker_results: list[dict],
@@ -1314,8 +1321,9 @@ class VirtualHavruta:
         # Combine the scores
         final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
         sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
+        ranking_scores = np.sort(final_ranking_score, axis=0)[::-1].reshape(-1).tolist()
         sorted_chunks = [chunks[i] for i in sort_indices]
-        return sorted_chunks, total_token_count
+        return sorted_chunks, ranking_scores, total_token_count
 
 
     def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
@@ -1478,3 +1486,7 @@ class VirtualHavruta:
         assert len(nodes) == 1
         node = nodes[0]
         return convert_node_to_doc(node)
+
+
+def sort_list_by_other(list1, list2, reverse=False):
+    return [x for x, _ in sorted(zip(list1, list2), key=lambda pair: pair[1], reverse=reverse)]
