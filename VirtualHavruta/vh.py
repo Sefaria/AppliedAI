@@ -646,7 +646,7 @@ class VirtualHavruta:
             database_=self.config["database"]["kg"]["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
-    def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
+    def sort_reference(self, query: str, retrieval_res, msg_id: str = ''):
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
         
@@ -658,7 +658,6 @@ class VirtualHavruta:
         query (str): The query string against which references are being sorted and classified.
         retrieval_res (iterable): An iterable of tuples containing reference data objects and similarity scores.
         msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        filter_mode (str): Determines the mode for filtering references; can be 'primary' or 'secondary'. This affects how relevance scores are calculated.
         
         Returns:
         tuple: A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary, and the total token count used during the process.
