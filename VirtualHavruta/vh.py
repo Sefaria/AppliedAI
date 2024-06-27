@@ -20,6 +20,7 @@ import requests
 from time import sleep
 import neo4j
 
+from VirtualHavruta.util import min_max_scaling
 
 from VirtualHavruta.document import ChunkDocument
 
@@ -1401,7 +1402,7 @@ class VirtualHavruta:
     def get_page_rank_scores(self, documents: list[Document]) -> np.array:
         """Get the PageRank scores for each document.
 
-        Secondary references are assigned a default PageRank score of 1.0 (neutral under multiplication)
+        Perform batch-wise min-max scaling.
 
         Parameters
         ----------
@@ -1411,14 +1412,13 @@ class VirtualHavruta:
         -------
             array of page rank scores
         """
-        page_rank_scores = []
+        page_rank_scores_raw = []
         for doc in documents:
-            if self.is_primary_document(doc):
-                page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
-            else:
-                page_rank_score = 1.0
-            page_rank_scores.append(page_rank_score)
-        return np.array(page_rank_scores).reshape(-1, 1)
+            page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
+            page_rank_scores_raw.append(page_rank_score)
+
+        page_rank_scores_scaled = min_max_scaling(page_rank_scores_raw)
+        return np.array(page_rank_scores_scaled).reshape(-1, 1)
 
     def is_primary_document(self, doc: Document) -> bool:
         """Check if a document is a primary document.
