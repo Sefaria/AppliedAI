@@ -505,7 +505,7 @@ class VirtualHavruta:
 
         return list(url_to_node.values())
     
-    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode: str="primary", msg_id: str = "") -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -525,7 +525,7 @@ class VirtualHavruta:
             list of (document, score)
         """
         self.logger.info(f"MsgID={msg_id}. Starting get_retrieval_results_knowledge_graph.")
-        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode=filter_mode, msg_id=msg_id)
+        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode_nodes=filter_mode_nodes, msg_id=msg_id)
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
         distances = [distance for _, distance in nodes_distances]
@@ -545,7 +545,7 @@ class VirtualHavruta:
         """
         return max(start_score - n_hops * score_decrease_per_hop, 0.0)
 
-    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode: str = "primary", msg_id: str = "") -> list[tuple["Node", int]]:
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Parameters
@@ -569,12 +569,13 @@ class VirtualHavruta:
         primary_doc_categories = [category.replace("Document Category: ", "") for category in self.primary_source_filter]
         query_params: dict = {"url": url, "primaryDocCategories": primary_doc_categories}
         for i in range(1, depth + 1):
+            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories' if filter_mode_nodes else ''
             query = f"""
             MATCH (start {{`metadata.url`: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
-            AND {"NOT" if filter_mode == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories
+            {source_filter}
             RETURN DISTINCT neighbor, {i} AS depth
             """
             with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
@@ -1207,7 +1208,7 @@ class VirtualHavruta:
                                   screen_res: str,
                                   scripture_query: str,
                                   enriched_query: str,
-                                  filter_mode: str,
+                                  filter_mode_nodes: str | None = None,
                                   linker_results: list[dict]|None = None,
                                   semantic_search_results: list[tuple[Document, float]]|None = None,
                                   msg_id: str = ''):
@@ -1267,7 +1268,7 @@ class VirtualHavruta:
                 url=top_node.metadata["URL"],
                 direction=self.config["database"]["kg"]["direction"],
                 order=self.config["database"]["kg"]["order"],
-                filter_mode=filter_mode,
+                filter_mode_nodes=filter_mode_nodes,
                 score_central_node=6.0
             )
             neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
