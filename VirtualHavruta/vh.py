@@ -406,6 +406,8 @@ class VirtualHavruta:
             order of neighbors (=number of hops) to include, between 1 and n
         score_central_node
             score of the central node, by default 6.0
+        filter_mode_nodes
+            Mode for filtering search results, if provided; valid options are 'primary' or 'secondary'. None for no filter.
 
         Returns
         -------
@@ -1109,8 +1111,14 @@ class VirtualHavruta:
             The screen_res query, which is used as part of the query to the Sefaria Linker.
         scripture_query
             query used to retrieve documents from the vector database
-        filter_mode
-            for 'primary' or 'secondary' references
+        enriched_query
+            query enriched with additional context
+        filter_mode_nodes
+            for 'primary' or 'secondary' references, optional
+        linker_results
+            results from the linker
+        semantic_search_results
+            results from semantic search
         msg_id, optional
            identifier for slack message, by default ''
 
@@ -1124,7 +1132,9 @@ class VirtualHavruta:
         collected_chunks = []
         ranking_scores_collected_chunks = []
         if linker_results:
-            seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, screen_res=screen_res, msg_id=msg_id)
+            if semantic_search_results:
+                self.logger.warning(f"MsgID={msg_id}. Both linker results and semantic search results are provided. Using linker results as seeds.")
+            seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
         elif semantic_search_results:
             seed_chunks_vector_db = [doc for doc, _ in semantic_search_results]
             seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
@@ -1179,17 +1189,17 @@ class VirtualHavruta:
         return retrieval_res_kg,  total_token_count
 
 
-    def get_linker_seed_chunks(self, screen_res: str, linker_results: list[dict],
+    def get_linker_seed_chunks(self, linker_results: list[dict],
                         filter_mode: str="primary", msg_id: str="") -> list[Document]:
         """Given linker results, get the corresponding seed chunks.
 
-        First retrieve the seed nodes: linker results (or as fallback the chunks with the highest semantic similarity).
+        First retrieve the seed nodes: linker results.
         Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
 
         Parameters
         ----------
-        screen_res
-            user query
+        linker_results
+            results from linker api
         scripture_query
             scripture query
         msg_id
@@ -1215,7 +1225,10 @@ class VirtualHavruta:
         ----------
         chunks
             langchain documents
-
+        enriched_query
+            query enriched with additional context
+        scripture_query
+            query used to retrieve documents from the vector database
         semantic_similarity_scores
             optional, provide if available to save some computational costs
         Returns
