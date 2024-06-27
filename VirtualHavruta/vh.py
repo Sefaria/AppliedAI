@@ -495,14 +495,14 @@ class VirtualHavruta:
         urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
                                     for linker_res in linker_results})
         nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
-        # ToDo: How to treat the one to many relationship url -> node
-        unique_urls = set()
-        docs_linker_filtered: list = []
-        for doc in nodes_linker:
-            if doc.metadata["URL"] not in unique_urls:
-                unique_urls.add(doc.metadata["URL"])
-                docs_linker_filtered.append(doc)
-        return docs_linker_filtered
+        url_to_node = {}
+        for node in nodes_linker:
+            if (url:=node.metadata["URL"])  not in url_to_node:
+                url_to_node[url] = node
+            else:
+                url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
+
+        return list(url_to_node.values())
     
     def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode: str="primary", msg_id: str = "") -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
@@ -670,13 +670,13 @@ class VirtualHavruta:
         documents = [d for d, _ in retrieval_res]
         semantic_similarity_scores = [sim_score for _, sim_score in retrieval_res]
         sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(documents,
-                                                                              query=query,
+                                                                              enriched_query=query,
                                                                               semantic_similarity_scores=semantic_similarity_scores,
                                                                               msg_id=msg_id)
         total_tokens += token_count
 
-        retrieval_res_sorted = list(zip(sorted_docs, sorted_ranking_scores))
-        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_sorted, msg_id=msg_id)
+        retrieval_res_ranked = list(zip(sorted_docs, sorted_ranking_scores))
+        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
 
     def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str="") -> tuple[dict, dict, dict]:
@@ -1203,7 +1203,8 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
-    def graph_traversal_retriever(self, screen_res: str,
+    def graph_traversal_retriever(self,
+                                  screen_res: str,
                                   scripture_query: str,
                                   enriched_query: str,
                                   filter_mode: str,
@@ -1242,7 +1243,11 @@ class VirtualHavruta:
         else:
             raise ValueError("One of linker results or semantic search results need to be provided.")
         # rank seed chunks
-        candidate_chunks, candidate_rankings, token_count = self.rank_documents(seed_chunks, query=enriched_query)
+        candidate_chunks, candidate_rankings, token_count = self.rank_documents(
+            seed_chunks,
+            enriched_query=enriched_query,
+            scripture_query=scripture_query
+        )
         total_token_count += token_count
 
         n_accepted_chunks = 0
@@ -1269,7 +1274,12 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
-            candidate_chunks, candidate_rankings,  token_count = self.rank_documents(candidate_chunks, query=scripture_query, msg_id=msg_id)
+            candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
+                candidate_chunks,
+                enriched_query=enriched_query,
+                scripture_query=scripture_query,
+                msg_id=msg_id
+            )
             total_token_count += token_count
             if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
                 candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
@@ -1307,9 +1317,9 @@ class VirtualHavruta:
         return seed_chunks
 
 
-    def rank_documents(self, chunks: list[Document], query: str, semantic_similarity_scores: list[float]|None = None,
+    def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
                               msg_id: str = "") -> list[Document]:
-        """Rank the node candidates in descending order based on their relevance to the query.
+        """Rank the document candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
 
@@ -1327,8 +1337,10 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates for KG search.")
         total_token_count = 0
         if not semantic_similarity_scores:
-            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query)
-        reference_classes, token_count = self.get_reference_class(chunks, query)
+            if not scripture_query:
+                raise ValueError("Either provide semantic similarity scores or scripture query.")
+            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, scripture_query)
+        reference_classes, token_count = self.get_reference_class(chunks, enriched_query)
         total_token_count += token_count
         page_rank_scores: np.array = self.get_page_rank_scores(chunks)
 
