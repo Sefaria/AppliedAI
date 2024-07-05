@@ -1,10 +1,15 @@
 # Load basic libraries
-import yaml, json
 import operator
-import pandas as pd
 from datetime import datetime, timedelta
+from time import sleep
 import os
+import json
+import yaml
 
+import numpy as np
+import pandas as pd
+from langchain.utils.math import cosine_similarity
+from langchain_core.documents import Document
 # Import custom langchain modules for NLP operations and vector search
 from langchain.vectorstores.neo4j_vector import Neo4jVector
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -13,8 +18,13 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
-import traceback
 import requests
+
+import neo4j
+
+from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
+    get_id_graph_format, get_node_data, min_max_scaling
+
 
 # Main Virtual Havruta functionalities
 class VirtualHavruta:
@@ -57,16 +67,16 @@ class VirtualHavruta:
 
         # Initialize Neo4j vector index and retrieve DB configs
         model_api = self.config['openai_model_api']
-        db = self.config['database']
+        config_emb_db = self.config['database']['embed']
         self.neo4j_vector = Neo4jVector.from_existing_index(
             OpenAIEmbeddings(model=model_api['embedding_model']),
             index_name="index",
-            url=db['db_url'],
-            username=db['db_username'],
-            password=db['db_password'],
+            url=config_emb_db['url'],
+            username=config_emb_db['username'],
+            password=config_emb_db['password'],
         )
-        self.top_k = db['top_k']
-        self.neo4j_deeplink = db['neo4j_deeplink']
+        self.top_k = config_emb_db['top_k']
+        self.neo4j_deeplink = self.config['database']['kg']['neo4j_deeplink']
 
         # Initiate logger and pagerank lookup table
         self.logger = logger
@@ -77,7 +87,9 @@ class VirtualHavruta:
         linker_references = self.config['linker_references']
         self.primary_source_filter = refs['primary_source_filter']
         self.num_primary_citations = refs['num_primary_citations']
-        self.num_secondary_citations = refs['num_secondary_citations']        
+        self.num_secondary_citations = refs['num_secondary_citations']
+        self.num_primary_citations_linker = linker_references['num_primary_citations']
+        self.num_secondary_citations_linker = linker_references['num_secondary_citations']
         self.linker_primary_source_filter = linker_references['primary_source_filter']
         
         # Initialize prompt templates and LLM instances
@@ -334,8 +346,8 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
-            query.lower(), self.top_k
-        )
+            query.lower(), self.top_k,
+            )
         # Filter the documents based on whether we're looking for primary or secondary sources
         if filter_mode == 'primary':
             predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.primary_source_filter)
@@ -346,7 +358,190 @@ class VirtualHavruta:
         retrieval_res = list(filter(predicate, retrieved_docs))
         return retrieval_res
     
-    def sort_reference(self, query: str, retrieval_res, msg_id: str = '', filter_mode: str='primary'):
+    def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
+                                               url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
+        """Retrieve nodes corresponding to linker results given a query.
+
+        Get linker results given a query. Find and return the corresponding nodes in the graph database.
+        There is a one-to-many relationship between linker result and graphs in the graph db.
+
+        Parameters
+        ----------
+        linker_results
+            results from the linker api
+        msg_id, optional
+            for slack bot, by default ''
+        filter_mode, optional
+            Mode for filtering search results; valid options are 'primary' or 'secondary'. Defaults to 'primary'.
+        url_prefix, optional
+            add domain if missing, by default "https://www.sefaria.org/"
+
+        Returns
+        -------
+           list of documents
+        """
+        urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
+                                    for linker_res in linker_results})
+        nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
+        url_to_node = {}
+        for node in nodes_linker:
+            if (url:=node.metadata["URL"])  not in url_to_node:
+                url_to_node[url] = node
+            else:
+                url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
+
+        return list(url_to_node.values())
+    
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple[Document, float]]:
+        """Given a url, query the graph database for the neighbors of the node with that url.
+
+        Score the neighbors based upon their distance to the central node.
+        Parameters
+        ----------
+        url
+            of central node
+        direction
+            of relationship, one of 'incoming', 'outgoing', 'both_ways'
+        order
+            order of neighbors (=number of hops) to include, between 1 and n
+        score_central_node
+            score of the central node, by default 6.0
+        filter_mode_nodes
+            Mode for filtering search results, if provided; valid options are 'primary' or 'secondary'. None for no filter.
+
+        Returns
+        -------
+            list of (document, score)
+        """
+        self.logger.info(f"MsgID={msg_id}. Starting get_retrieval_results_knowledge_graph.")
+        nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode_nodes=filter_mode_nodes, msg_id=msg_id)
+        nodes = [node for node, _ in nodes_distances]
+        docs =  [convert_node_to_doc(node) for node in nodes]
+        distances = [distance for _, distance in nodes_distances]
+        scores = [self.score_document_by_graph_distance(distance, start_score=score_central_node, score_decrease_per_hop=0.1) for distance in distances]
+        return list(zip(docs, scores, strict=True))
+
+    def score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float:
+        """Score a document by the number of hops from the central node.
+
+        Parameters
+        ----------
+        n_hops
+            number of hops from the central node
+        start_score
+            score of the central node
+        score_decrease_per_hop
+            decrease of score per hop
+        Returns
+        -------
+            score
+        """
+        return max(start_score - n_hops * score_decrease_per_hop, 0.0)
+
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple["Node", int]]:
+        """Given a url, query the graph database for the neighbors of the node with that url.
+
+        Parameters
+        ----------
+        url
+            of central node
+        relationship
+            The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
+            'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
+        depth
+            degree of neighbors to include, between 1 and n
+
+        Returns
+        -------
+            list of (node, distance) tuples, where distance is the number of hops from the central node
+        """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving graph neighbors for url: {url}.")
+        assert relationship in ["incoming", "outgoing", "both_ways"]
+        start_node_operator: str = "<-" if relationship == "incoming" else "-"
+        related_node_operator: str = "->" if relationship == "outgoing" else "-"
+        nodes = []
+        primary_doc_categories = [category.replace("Document Category: ", "") for category in self.primary_source_filter]
+        query_params: dict = {"url": url, "primaryDocCategories": primary_doc_categories}
+        for i in range(1, depth + 1):
+            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories' if filter_mode_nodes else ''
+            query = f"""
+            MATCH (start {{`metadata.url`: $url}})
+            WITH start
+            MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
+            WHERE neighbor <> start
+            {source_filter}
+            RETURN DISTINCT neighbor, {i} AS depth
+            """
+            with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+                neighbor_nodes, _, _ = driver.execute_query(
+                query,
+                parameters_=query_params,
+                database_=self.config["database"]["kg"]["name"],)
+            nodes.extend(neighbor_nodes)
+        return nodes
+    
+    def query_node_by_url(self, url: str,) -> str|None:
+        """Given a url, query the graph database for the node with that url.
+
+        If more than one node has the same url, return only one.
+
+        Parameters
+        ----------
+        url
+            of node
+
+        Returns
+        -------
+            unique id of the node
+        """
+        query_parameters = {"url": url}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url`=$url
+        RETURN n.id
+        LIMIT 1
+        """
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            id, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["kg"] ["name"],)
+        if id:
+            return id[0].data()["n.id"]
+        else:
+            return None
+
+    def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
+        """Given a list of urls, query the graph database for the nodes with those urls.
+
+        Note that there is a one-to-many relationship between urls and documents in the vector database,
+        due to different sources for the same url.
+
+        Return the nodes as document compatible type.
+
+        Parameters
+        ----------
+        urls
+            of documents
+
+        Returns
+        -------
+            list of documents
+        """
+        query_parameters = {"urls": urls}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url` in $urls
+        RETURN n
+        """
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            nodes, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["kg"]["name"],)
+        return [convert_node_to_doc(node) for node in nodes]
+
+    def sort_reference(self, scripture_query: str, enriched_query: str, retrieval_res, filter_mode: str|None = 'primary', msg_id: str = ''):
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
         
@@ -355,10 +550,11 @@ class VirtualHavruta:
         The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
         
         Parameters:
-        query (str): The query string against which references are being sorted and classified.
+        scripture_query (str): The query string against which references are being sorted and classified.
+        enriched_query (str): The enriched query string used to retrieve documents.
         retrieval_res (iterable): An iterable of tuples containing reference data objects and similarity scores.
+        filter_mode: set if all retrieval results are from either primary or secondary sources, set to None if both are present. Defaults to 'primary'.
         msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        filter_mode (str): Determines the mode for filtering references; can be 'primary' or 'secondary'. This affects how relevance scores are calculated.
         
         Returns:
         tuple: A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary, and the total token count used during the process.
@@ -366,61 +562,74 @@ class VirtualHavruta:
         Notes:
         The function is robust to variations in data and manages complex scenarios where multiple references may have the same URL but different content or sources. It effectively manages and logs all operations to ensure data integrity and traceability.
         '''
-        # Initialize dictionaries and tok_count to store the data, references, relevance scores, and token count
+        total_tokens = 0
+
+        documents = [d for d, _ in retrieval_res]
+        semantic_similarity_scores = [sim_score for _, sim_score in retrieval_res]
+        sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(documents,
+                                                                              enriched_query=enriched_query,
+                                                                              scripture_query=scripture_query,
+                                                                              semantic_similarity_scores=semantic_similarity_scores,
+                                                                              filter_mode=filter_mode,
+                                                                              msg_id=msg_id)
+        total_tokens += token_count
+
+        retrieval_res_ranked = list(zip(sorted_docs, sorted_ranking_scores))
+        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
+        return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
+
+    def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str="") -> tuple[dict, dict, dict]:
+        """Merge chunks with the same url.
+
+        This can occur for two reasons:
+        1. Different graph nodes with the same URL.
+        2. The same graph node split into multiple chunks.
+
+        Parameters
+        ----------
+        retrieval_res
+            list of document, ranking_score tuples
+        msg_id, optional
+            slack msg id, by default ""
+
+        Returns
+        -------
+            A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary.
+        """
         src_data_dict = {}
         src_ref_dict = {}
         src_rel_dict = {}
-        total_tokens = 0
-        
         # Iterate over each item in the retrieval results
-        for n, (d, sim_score) in enumerate(retrieval_res):
-            # Concatenate reference data and its source
-            ref_data = d.page_content + "... --Origin of this " + d.metadata["source"]
-            # Log the reference data and its link
-            self.logger.info(f"MsgID={msg_id}. \n{n+1} RefData={ref_data} \nLink is {d.metadata['URL']}. Similarity Score is {sim_score}")
-            # Classify the reference data and get the token count
-            ref_class, tok_count = self.classification(query, ref_data, msg_id)
-            total_tokens += tok_count
-    
-            # If the reference class is not None or 0 (i.e., it is relevant)
-            if ref_class:
-                if filter_mode == 'primary':
-                    # Retrieve the PageRank score for the URL of the current reference
-                    pagerank = self.retrieve_pr_score(d.metadata["URL"], msg_id)
-                    # Calculate the relevance score based on classification, similarity, and PageRank
-                    rel_score = ref_class * sim_score * pagerank
-                else:
-                    rel_score = ref_class * sim_score
-    
-                # If the URL is not already in src_data_dict, add all reference information
-                if d.metadata["URL"] not in src_data_dict:
-                    src_data_dict[d.metadata["URL"]] = d.page_content
-                    src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
-                    src_rel_dict[d.metadata["URL"]] = rel_score
-                else:
-                    # If the URL is already present, handle different versions or sources with the same URL
-                    existing_content = src_data_dict[d.metadata["URL"]]
-                    # Concatenate page content for the same URL
-                    src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
-    
-                    # Avoid duplicate source listings by separating with a pipe "|"
-                    existing_ref = src_ref_dict[d.metadata["URL"]]
-                    existing_ref_list = existing_ref.split(" | ")
-                    if d.metadata["source"] not in existing_ref_list:
-                        src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
-    
-                    # Update the relevance score with the maximum score between existing and new
-                    existing_rel_score = src_rel_dict[d.metadata["URL"]]
-                    src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
-    
+        for (d, rel_score) in retrieval_res:
+            # If the URL is not already in src_data_dict, add all reference information
+            if d.metadata["URL"] not in src_data_dict:
+                src_data_dict[d.metadata["URL"]] = d.page_content
+                src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
+                src_rel_dict[d.metadata["URL"]] = rel_score
+            else:
+                # If the URL is already present, handle different versions or sources with the same URL
+                existing_content = src_data_dict[d.metadata["URL"]]
+                # Concatenate page content for the same URL
+                src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
+
+                # Avoid duplicate source listings by separating with a pipe "|"
+                existing_ref = src_ref_dict[d.metadata["URL"]]
+                existing_ref_list = existing_ref.split(" | ")
+                if d.metadata["source"] not in existing_ref_list:
+                    src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
+
+                # Update the relevance score with the maximum score between existing and new
+                existing_rel_score = src_rel_dict[d.metadata["URL"]]
+                src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
+
         # Sort the source relevance dictionary based on scores in descending order
         sorted_src_rel_dict = dict(
             sorted(src_rel_dict.items(), key=operator.itemgetter(1), reverse=True)
         )
-    
+
         # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
-        return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
-    
+        return sorted_src_rel_dict, src_data_dict, src_ref_dict
+
     def classification(self, query: str, ref_data: str, msg_id: str=''):
         '''
         Classifies the provided query and reference data using a chained language model, returning the classification result and token count.
@@ -478,7 +687,7 @@ class VirtualHavruta:
             self.logger.warning("MsgID={msg_id}. Cannot retrieve pagerank score. Link is {doc_id}.")
         return pr_score
 
-    def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0) -> str:
+    def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False) -> str:
         '''
         Constructs formatted reference strings and citation lists based on the source relevance and data dictionaries, with specific handling for primary and secondary references.
         
@@ -502,7 +711,10 @@ class VirtualHavruta:
         '''
         # Determine the starting citation number and how many citations to include
         n_citation_base = 0 if ref_mode == 'primary' else n_citation_base
-        num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
+        if is_linker_search:
+            num_citations = self.num_primary_citations_linker if ref_mode == 'primary' else self.num_secondary_citations_linker
+        else:
+            num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
 
         # Lists to hold parts of the final strings
         ref_data_parts = []
@@ -512,7 +724,7 @@ class VirtualHavruta:
 
         # Process only the needed citations
         for n, (k, rel_score) in enumerate(sorted_src_rel_dict.items()):
-            if n >= num_citations:
+            if num_citations > 0 and n >= num_citations:
                 break
 
             n_citation = n_citation_base + n + 1
@@ -890,3 +1102,334 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
+    def graph_traversal_retriever(self,
+                                  screen_res: str,
+                                  scripture_query: str,
+                                  enriched_query: str,
+                                  filter_mode_nodes: str | None = None,
+                                  linker_results: list[dict]|None = None,
+                                  semantic_search_results: list[tuple[Document, float]]|None = None,
+                                  msg_id: str = ''):
+        """Find seed chunks based upon linker results or semantic similarity, then traverse the graph to find related chunks in the local neighborhood.
+
+        Details: https://wwwmatthes.in.tum.de/pages/3bd5tm02lihx/Master-s-Thesis-Philippe-Saad, Thesis p. 28f.
+
+        Parameters
+        ----------
+        screen_res
+            The screen_res query, which is used as part of the query to the Sefaria Linker.
+        scripture_query
+            query used to retrieve documents from the vector database
+        enriched_query
+            query enriched with additional context
+        filter_mode_nodes
+            for 'primary' or 'secondary' references, optional
+        linker_results
+            results from the linker
+        semantic_search_results
+            results from semantic search
+        msg_id, optional
+           identifier for slack message, by default ''
+
+        Returns
+        -------
+            list of sorted chunks, sorted by relevance in descending order
+        """
+        # get seed chunks
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
+        total_token_count = 0
+        collected_chunks = []
+        ranking_scores_collected_chunks = []
+        if linker_results:
+            if semantic_search_results:
+                self.logger.warning(f"MsgID={msg_id}. Both linker results and semantic search results are provided. Using linker results as seeds.")
+            seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
+        elif semantic_search_results:
+            seed_chunks_vector_db = [doc for doc, _ in semantic_search_results]
+            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
+        else:
+            raise ValueError("One of linker results or semantic search results need to be provided.")
+        # rank seed chunks
+        candidate_chunks, candidate_rankings, token_count = self.rank_documents(
+            seed_chunks,
+            enriched_query=enriched_query,
+            scripture_query=scripture_query
+        )
+        total_token_count += token_count
+
+        n_accepted_chunks = 0
+        while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:
+            top_chunk = candidate_chunks.pop(0) # Get the top chunk
+            collected_chunks.append(top_chunk)
+            local_top_score = candidate_rankings.pop(0)
+            ranking_scores_collected_chunks.append(local_top_score)
+            n_accepted_chunks += 1
+            # avoid final loop execution which does not add a chunk to collected_chunks anyways
+            if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
+                break
+            neighbor_nodes = []
+            top_node = self.get_node_corresponding_to_chunk(top_chunk)
+            neighbor_nodes.append(top_node)
+            neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
+                url=top_node.metadata["URL"],
+                direction=self.config["database"]["kg"]["direction"],
+                order=self.config["database"]["kg"]["order"],
+                filter_mode_nodes=filter_mode_nodes,
+                score_central_node=6.0
+            )
+            neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
+            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
+            # avoid re-adding the top chunk
+            candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
+            candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
+                candidate_chunks,
+                enriched_query=enriched_query,
+                scripture_query=scripture_query,
+                msg_id=msg_id
+            )
+            total_token_count += token_count
+            if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
+                candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
+                candidate_rankings = candidate_rankings[:self.config["database"]["kg"]["max_depth"]]
+            elif len(candidate_chunks) == 0:
+                break
+        retrieval_res_kg = sorted(zip(collected_chunks, ranking_scores_collected_chunks), key=lambda pair: pair[1], reverse=True)
+
+        return retrieval_res_kg,  total_token_count
+
+    def get_linker_seed_chunks(self, linker_results: list[dict],
+                        filter_mode: str="primary", msg_id: str="") -> list[Document]:
+        """Given linker results, get the corresponding seed chunks.
+
+        First retrieve the seed nodes: linker results.
+        Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
+
+        Parameters
+        ----------
+        linker_results
+            results from linker api
+        scripture_query
+            scripture query
+        msg_id
+            message id for slack, optional
+
+        Returns
+        -------
+            list of seed chunks
+        """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_linker_seed_chunks for KG search.")
+        seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
+        seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
+        return seed_chunks
+
+    def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
+                              filter_mode: str|None = None, msg_id: str = "") -> tuple[list[Document], list[float], int]:
+        """Rank the document candidates in descending order based on their relevance to the query.
+
+        Return a new list, do not modify the input list.
+
+        Parameters
+        ----------
+        chunks
+            langchain documents
+        enriched_query
+            query enriched with additional context
+        scripture_query
+            query used to retrieve documents from the vector database
+        semantic_similarity_scores
+            optional, provide if available to save some computational costs
+        filter_mode
+            for 'primary' or 'secondary' references. Set the mode if all documents are of the same type, set to None for mixed types.
+            If the filter mode is set to secondary, no page rank scores are computed.
+
+        Returns
+        -------
+            ranked chunks, rating_scores, total_token_count
+        """
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates.")
+        total_token_count = 0
+        if not semantic_similarity_scores:
+            if not enriched_query:
+                raise ValueError("Either provide semantic similarity scores or enriched query.")
+            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query)
+        reference_classes, token_count = self.get_reference_class(chunks, scripture_query=scripture_query, enriched_query=enriched_query)
+        total_token_count += token_count
+
+        if filter_mode == "secondary":
+            page_rank_scores = np.ones((len(chunks), 1), dtype=float)
+        else:
+            page_rank_scores: np.array = self.get_page_rank_scores(chunks)
+
+        # Combine the scores
+        final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
+        sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
+        ranking_scores = np.sort(final_ranking_score, axis=0)[::-1].reshape(-1).tolist()
+        sorted_chunks = [chunks[i] for i in sort_indices]
+        return sorted_chunks, ranking_scores, total_token_count
+
+    def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
+        """Compute the semantic similarity between a document and a query.
+
+        Parameters
+        ----------
+        documents
+            langchain documents
+        query
+            query string
+
+        Returns
+        -------
+            similarity score
+        """
+        query_embedding = np.array(self.neo4j_vector.embedding.embed_query(text=query)).reshape(1, -1)
+        document_embeddings = np.array([doc.metadata["embedding"] for doc in documents])
+        if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
+            similarity = cosine_similarity(query_embedding, document_embeddings)
+            relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
+            return relevance_score_function(similarity).reshape(-1, 1)
+        else:
+            raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
+
+    def get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str) -> np.array:
+        """Get the reference class for each document based on the query.
+
+        Parameters
+        ----------
+        documents
+            langchain documents
+        scripture_query
+            query string
+        enriched_query
+            query enriched with additional context
+
+        Returns
+        -------
+            array of reference classes
+        """
+        reference_classes = []
+        total_token_count = 0
+        for doc in documents:
+            ref_data = doc.page_content + "... --Origin of this " + doc.metadata["source"]
+            query = scripture_query if self.is_primary_document(doc) else enriched_query
+            ref_class, token_count = self.classification(query=query, ref_data=ref_data)
+            total_token_count += token_count
+            reference_classes.append(ref_class)
+        return np.array(reference_classes).reshape(-1, 1), total_token_count
+
+    def get_page_rank_scores(self, documents: list[Document]) -> np.array:
+        """Get the PageRank scores for each document.
+
+        Perform batch-wise min-max scaling.
+
+        Parameters
+        ----------
+        documents
+            langchain document type
+        Returns
+        -------
+            array of page rank scores
+        """
+        page_rank_scores_raw = []
+        for doc in documents:
+            page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
+            page_rank_scores_raw.append(page_rank_score)
+
+        page_rank_scores_scaled = min_max_scaling(page_rank_scores_raw)
+        return np.array(page_rank_scores_scaled).reshape(-1, 1)
+
+    def is_primary_document(self, doc: Document) -> bool:
+        """Check if a document is a primary document.
+
+        Parameters
+        ----------
+        doc
+            langchain document
+
+        Returns
+        -------
+            bool
+        """
+        return any(s in doc.metadata['source'] for s in self.primary_source_filter)
+
+    def get_document_id_vector_db_format(self, node: "Node") -> int:
+        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
+
+        Parameters
+        ----------
+        node
+            from the graph database
+
+        Returns
+        -------
+            id of the document in the vector database
+        """
+        record: dict = get_node_data(node)
+        id_graph_format = record["id"]
+        return int(id_graph_format) + 1
+
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20) -> list[Document]:
+        """Given a list of nodes, return the chunks corresponding to that node.
+
+        Parameters
+        ----------
+        node
+            id of the node
+        batch_size
+            number of documents to retrieve per query, avoid memory issues
+
+        Returns
+        -------
+            id of the chunks corresponding to the node
+        """
+        query_parameters = [
+            {"seq_num": node.metadata["seq_num"], "url": node.metadata["URL"]}
+            for node in nodes
+        ]
+        query_string = """
+        UNWIND $params AS param
+        MATCH (n)
+        WHERE n.seq_num = param.seq_num AND n.URL = param.url
+        RETURN n
+        """
+        vector_records = []
+        for i in range(0, len(query_parameters), batch_size):
+            try:
+                vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
+            except neo4j.exceptions.ServiceUnavailable:
+                self.logger.warning("Neo4j database is unavailable. Retrying.")
+                sleep(1)
+                vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
+            except BufferError:
+                self.logger.warning("Neo4j encountered an error. Retrying.")
+                sleep(1)
+                vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
+            vector_records += vector_records_batch
+        return [convert_vector_db_record_to_doc(record) for record in vector_records]
+
+    def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
+        """Given a chunk, return the node corresponding to that chunk.
+
+        Parameters
+        ----------
+        chunk
+            document representing the chunk
+
+        Returns
+        -------
+            document representing the node
+        """
+        query_parameters = {"url": chunk.metadata["URL"], "id": get_id_graph_format(chunk.metadata["seq_num"])}
+        query_string="""
+        MATCH (n)
+        WHERE n.`metadata.url`=$url
+        AND n.id=$id
+        RETURN n
+        """
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            nodes, _, _ = driver.execute_query(
+            query_string,
+            parameters_=query_parameters,
+            database_=self.config["database"]["kg"] ["name"],)
+        assert len(nodes) == 1
+        node = nodes[0]
+        return convert_node_to_doc(node)
