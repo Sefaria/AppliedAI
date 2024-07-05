@@ -22,7 +22,7 @@ def part_res(input_res, sep=''):
         return input_res.partition(sep)[2].strip()
     return input_res.strip()
 
-def min_max_scaling(data: Iterable, offset: float = 1e-05) -> list:
+def min_max_scaling(data: Iterable, offset: float = 1e-09) -> list:
     """
     Perform min-max scaling on a list or numpy array of numerical data.
 

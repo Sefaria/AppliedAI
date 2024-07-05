@@ -365,10 +365,8 @@ class VirtualHavruta:
 
         Parameters
         ----------
-        screen_res
-            The screen_res query, which is used as part of the query to the Sefaria Linker.
-        enriched_query
-            The enriched query string used to retrieve documents.
+        linker_results
+            results from the linker api
         msg_id, optional
             for slack bot, by default ''
         filter_mode, optional
@@ -422,12 +420,16 @@ class VirtualHavruta:
         return list(zip(docs, scores, strict=True))
 
     def score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float:
-        """Score a document w.r.t. a query.
+        """Score a document by the number of hops from the central node.
 
         Parameters
         ----------
-        document
-           langchain type
+        n_hops
+            number of hops from the central node
+        start_score
+            score of the central node
+        score_decrease_per_hop
+            decrease of score per hop
         Returns
         -------
             score
@@ -442,7 +444,8 @@ class VirtualHavruta:
         url
             of central node
         relationship
-            one of 'incoming', 'outgoing', 'both_ways'
+            The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
+            'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
         depth
             degree of neighbors to include, between 1 and n
 
@@ -1188,7 +1191,6 @@ class VirtualHavruta:
 
         return retrieval_res_kg,  total_token_count
 
-
     def get_linker_seed_chunks(self, linker_results: list[dict],
                         filter_mode: str="primary", msg_id: str="") -> list[Document]:
         """Given linker results, get the corresponding seed chunks.
@@ -1213,7 +1215,6 @@ class VirtualHavruta:
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
         seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
         return seed_chunks
-
 
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
                               msg_id: str = "") -> list[Document]:
@@ -1251,7 +1252,6 @@ class VirtualHavruta:
         ranking_scores = np.sort(final_ranking_score, axis=0)[::-1].reshape(-1).tolist()
         sorted_chunks = [chunks[i] for i in sort_indices]
         return sorted_chunks, ranking_scores, total_token_count
-
 
     def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
         """Compute the semantic similarity between a document and a query.
@@ -1416,7 +1416,3 @@ class VirtualHavruta:
         assert len(nodes) == 1
         node = nodes[0]
         return convert_node_to_doc(node)
-
-
-def sort_list_by_other(list1, list2, reverse=False):
-    return [x for x, _ in sorted(zip(list1, list2), key=lambda pair: pair[1], reverse=reverse)]
