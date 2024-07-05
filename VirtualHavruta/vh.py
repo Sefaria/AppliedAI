@@ -1278,15 +1278,17 @@ class VirtualHavruta:
         else:
             raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
 
-    def get_reference_class(self, documents: list[Document], query: str) -> np.array:
+    def get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str) -> np.array:
         """Get the reference class for each document based on the query.
 
         Parameters
         ----------
         documents
             langchain documents
-        query
+        scripture_query
             query string
+        enriched_query
+            query enriched with additional context
 
         Returns
         -------
@@ -1296,7 +1298,8 @@ class VirtualHavruta:
         total_token_count = 0
         for doc in documents:
             ref_data = doc.page_content + "... --Origin of this " + doc.metadata["source"]
-            ref_class, token_count = self.classification(query, ref_data)
+            query = scripture_query if self.is_primary_document(doc) else enriched_query
+            ref_class, token_count = self.classification(query=query, ref_data=ref_data)
             total_token_count += token_count
             reference_classes.append(ref_class)
         return np.array(reference_classes).reshape(-1, 1), total_token_count
