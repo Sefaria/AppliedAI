@@ -1219,7 +1219,7 @@ class VirtualHavruta:
         return seed_chunks
 
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
-                              msg_id: str = "") -> list[Document]:
+                              filter_mode: str|None = None, msg_id: str = "") -> list[Document]:
         """Rank the document candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
@@ -1234,6 +1234,10 @@ class VirtualHavruta:
             query used to retrieve documents from the vector database
         semantic_similarity_scores
             optional, provide if available to save some computational costs
+        filter_mode
+            for 'primary' or 'secondary' references. Set the mode if all documents are of the same type.
+            If the filter mode is set to secondary, no page rank scores are computed.
+
         Returns
         -------
             ranked chunks
@@ -1244,9 +1248,13 @@ class VirtualHavruta:
             if not enriched_query:
                 raise ValueError("Either provide semantic similarity scores or enriched query.")
             semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query)
-        reference_classes, token_count = self.get_reference_class(chunks, enriched_query)
+        reference_classes, token_count = self.get_reference_class(chunks, scripture_query=scripture_query, enriched_query=enriched_query)
         total_token_count += token_count
-        page_rank_scores: np.array = self.get_page_rank_scores(chunks)
+
+        if filter_mode == "secondary":
+            page_rank_scores = np.ones((len(chunks), 1), dtype=float)
+        else:
+            page_rank_scores: np.array = self.get_page_rank_scores(chunks)
 
         # Combine the scores
         final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
