@@ -11,8 +11,8 @@ database:
     password: password@dev
     order: 1
     direction: both_ways
-    k_seeds: 5
-    max_depth: 2
+    k_seeds: 5 # number of starting seeds for search, chosen by semantic similarity
+    max_depth: 2 # maximum number of retrieved chunks at the end of the kg search step. This also limits the maximum path length between any seed node and any node corresponding to a retrieved chunk.
     name: db_name
     neo4j_deeplink: http://neodash.graphapp.io/xyz
 
