@@ -1,11 +1,13 @@
 # Load basic libraries
-import yaml, json
 import operator
-import pandas as pd
 from datetime import datetime, timedelta
+from time import sleep
 import os
-from neo4j import GraphDatabase
+import json
+import yaml
+
 import numpy as np
+import pandas as pd
 from langchain.utils.math import cosine_similarity
 from langchain_core.documents import Document
 # Import custom langchain modules for NLP operations and vector search
@@ -17,7 +19,7 @@ from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
 import requests
-from time import sleep
+
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
@@ -470,7 +472,7 @@ class VirtualHavruta:
             {source_filter}
             RETURN DISTINCT neighbor, {i} AS depth
             """
-            with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
                 neighbor_nodes, _, _ = driver.execute_query(
                 query,
                 parameters_=query_params,
@@ -499,7 +501,7 @@ class VirtualHavruta:
         RETURN n.id
         LIMIT 1
         """
-        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
             id, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
@@ -532,7 +534,7 @@ class VirtualHavruta:
         WHERE n.`metadata.url` in $urls
         RETURN n
         """
-        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
@@ -1236,12 +1238,12 @@ class VirtualHavruta:
         -------
             ranked chunks
         """
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates for KG search.")
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates.")
         total_token_count = 0
         if not semantic_similarity_scores:
             if not scripture_query:
                 raise ValueError("Either provide semantic similarity scores or scripture query.")
-            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, scripture_query)
+            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query)
         reference_classes, token_count = self.get_reference_class(chunks, enriched_query)
         total_token_count += token_count
         page_rank_scores: np.array = self.get_page_rank_scores(chunks)
@@ -1408,7 +1410,7 @@ class VirtualHavruta:
         AND n.id=$id
         RETURN n
         """
-        with GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
