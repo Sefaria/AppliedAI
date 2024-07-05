@@ -541,7 +541,7 @@ class VirtualHavruta:
             database_=self.config["database"]["kg"]["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
-    def sort_reference(self, query: str, retrieval_res, msg_id: str = ''):
+    def sort_reference(self, scripture_query: str, enriched_query: str, retrieval_res, filter_mode: str|None = 'primary', msg_id: str = ''):
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
         
@@ -550,8 +550,10 @@ class VirtualHavruta:
         The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
         
         Parameters:
-        query (str): The query string against which references are being sorted and classified.
+        scripture_query (str): The query string against which references are being sorted and classified.
+        enriched_query (str): The enriched query string used to retrieve documents.
         retrieval_res (iterable): An iterable of tuples containing reference data objects and similarity scores.
+        filter_mode: set if all retrieval results are from either primary or secondary sources, set to None if both are present. Defaults to 'primary'.
         msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
         
         Returns:
@@ -565,8 +567,10 @@ class VirtualHavruta:
         documents = [d for d, _ in retrieval_res]
         semantic_similarity_scores = [sim_score for _, sim_score in retrieval_res]
         sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(documents,
-                                                                              enriched_query=query,
+                                                                              enriched_query=enriched_query,
+                                                                              scripture_query=scripture_query,
                                                                               semantic_similarity_scores=semantic_similarity_scores,
+                                                                              filter_mode=filter_mode,
                                                                               msg_id=msg_id)
         total_tokens += token_count
 
@@ -1219,7 +1223,7 @@ class VirtualHavruta:
         return seed_chunks
 
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
-                              filter_mode: str|None = None, msg_id: str = "") -> list[Document]:
+                              filter_mode: str|None = None, msg_id: str = "") -> tuple[list[Document], list[float], int]:
         """Rank the document candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
@@ -1235,12 +1239,12 @@ class VirtualHavruta:
         semantic_similarity_scores
             optional, provide if available to save some computational costs
         filter_mode
-            for 'primary' or 'secondary' references. Set the mode if all documents are of the same type.
+            for 'primary' or 'secondary' references. Set the mode if all documents are of the same type, set to None for mixed types.
             If the filter mode is set to secondary, no page rank scores are computed.
 
         Returns
         -------
-            ranked chunks
+            ranked chunks, rating_scores, total_token_count
         """
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates.")
         total_token_count = 0
