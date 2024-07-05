@@ -1241,8 +1241,8 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates.")
         total_token_count = 0
         if not semantic_similarity_scores:
-            if not scripture_query:
-                raise ValueError("Either provide semantic similarity scores or scripture query.")
+            if not enriched_query:
+                raise ValueError("Either provide semantic similarity scores or enriched query.")
             semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query)
         reference_classes, token_count = self.get_reference_class(chunks, enriched_query)
         total_token_count += token_count
