@@ -10,7 +10,8 @@ database:
     username: user
     password: password@dev
     order: 1
-    direction: both_ways
+    direction: both_ways # The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. 
+    # In the Sefaria KG, edges point from newer to older references. 'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
     k_seeds: 5 # number of starting seeds for search, chosen by semantic similarity
     max_depth: 2 # maximum number of retrieved chunks at the end of the kg search step. This also limits the maximum path length between any seed node and any node corresponding to a retrieved chunk.
     name: db_name

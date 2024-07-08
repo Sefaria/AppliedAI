@@ -401,7 +401,8 @@ class VirtualHavruta:
         url
             of central node
         direction
-            of relationship, one of 'incoming', 'outgoing', 'both_ways'
+           The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
+            'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
         order
             order of neighbors (=number of hops) to include, between 1 and n
         score_central_node
