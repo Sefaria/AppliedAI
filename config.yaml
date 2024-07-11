@@ -1,10 +1,22 @@
 # DB-related parameters
 database:
-  db_url: bolt://publicip:7687
-  db_username: username
-  db_password: password@dev
-  top_k: 1
-  neo4j_deeplink: "http://neodash.graphapp.io/xxxx"
+  embed:
+    url: bolt://publicip:7687
+    username: user
+    password: password@dev
+    top_k: 15
+  kg:
+    url: bolt://publicip_kg:7687
+    username: user
+    password: password@dev
+    order: 1
+    direction: both_ways # The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. 
+    # In the Sefaria KG, edges point from newer to older references. 'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
+    k_seeds: 5 # number of starting seeds for search, chosen by semantic similarity
+    max_depth: 2 # maximum number of retrieved chunks at the end of the kg search step. This also limits the maximum path length between any seed node and any node corresponding to a retrieved chunk.
+    name: db_name
+    neo4j_deeplink: http://neodash.graphapp.io/xyz
+
 
 # Slack-related parameters
 slack:
