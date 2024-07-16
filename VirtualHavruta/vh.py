@@ -1144,7 +1144,7 @@ class VirtualHavruta:
             top_node = self.get_node_corresponding_to_chunk(top_chunk)
             neighbor_nodes.append(top_node)
             neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
-                url=top_node.metadata["URL"],
+                url=top_node.metadata["url"],
                 direction=self.config["database"]["kg"]["direction"],
                 order=self.config["database"]["kg"]["order"],
                 filter_mode_nodes=filter_mode_nodes,
