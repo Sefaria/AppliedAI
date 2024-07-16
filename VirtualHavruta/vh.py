@@ -104,10 +104,12 @@ class VirtualHavruta:
         Additionally, it creates a separate prompt template for the QA (question-answering) category, including reference data.
 
         '''
-        categories = ['anti_attack', 'adaptor', 'editor', 'optimization', 'classification']
-        prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in categories}
-        self.prompt_qa = self.create_prompt_template('system', 'qa', True)
-        self.__dict__.update(prompts)
+        no_ref_categories = ['anti_attack', 'adaptor', 'editor', 'optimization']
+        ref_categories = ['classification', 'qa']
+        ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
+        no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
+        self.__dict__.update(ref_prompts)
+        self.__dict__.update(no_ref_prompts)
 
     def create_prompt_template(self, category: str, template: str, ref_mode: bool = False) -> ChatPromptTemplate:
         '''
