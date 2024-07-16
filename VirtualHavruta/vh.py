@@ -602,25 +602,25 @@ class VirtualHavruta:
         # Iterate over each item in the retrieval results
         for (d, rel_score) in retrieval_res:
             # If the URL is not already in src_data_dict, add all reference information
-            if d.metadata["URL"] not in src_data_dict:
-                src_data_dict[d.metadata["URL"]] = d.page_content
-                src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
-                src_rel_dict[d.metadata["URL"]] = rel_score
+            if d.metadata["url"] not in src_data_dict:
+                src_data_dict[d.metadata["url"]] = d.page_content
+                src_ref_dict[d.metadata["url"]] = d.metadata["source"]
+                src_rel_dict[d.metadata["url"]] = rel_score
             else:
                 # If the URL is already present, handle different versions or sources with the same URL
-                existing_content = src_data_dict[d.metadata["URL"]]
+                existing_content = src_data_dict[d.metadata["url"]]
                 # Concatenate page content for the same URL
-                src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
+                src_data_dict[d.metadata["url"]] = "...".join([existing_content, d.page_content])
 
                 # Avoid duplicate source listings by separating with a pipe "|"
-                existing_ref = src_ref_dict[d.metadata["URL"]]
+                existing_ref = src_ref_dict[d.metadata["url"]]
                 existing_ref_list = existing_ref.split(" | ")
                 if d.metadata["source"] not in existing_ref_list:
-                    src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
+                    src_ref_dict[d.metadata["url"]] = " | ".join([existing_ref, d.metadata["source"]])
 
                 # Update the relevance score with the maximum score between existing and new
-                existing_rel_score = src_rel_dict[d.metadata["URL"]]
-                src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
+                existing_rel_score = src_rel_dict[d.metadata["url"]]
+                src_rel_dict[d.metadata["url"]] = max(existing_rel_score, rel_score)
 
         # Sort the source relevance dictionary based on scores in descending order
         sorted_src_rel_dict = dict(
