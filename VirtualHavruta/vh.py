@@ -23,7 +23,7 @@ import requests
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
-    get_id_graph_format, get_node_data, min_max_scaling
+    get_node_data, min_max_scaling
 
 
 # Main Virtual Havruta functionalities
@@ -1393,11 +1393,11 @@ class VirtualHavruta:
         -------
             document representing the node
         """
-        query_parameters = {"url": chunk.metadata["URL"], "id": get_id_graph_format(chunk.metadata["seq_num"])}
+        query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
         query_string="""
         MATCH (n)
-        WHERE n.`metadata.url`=$url
-        AND n.id=$id
+        WHERE n.url=$url
+        AND n.versionTitle=$versionTitle
         RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
