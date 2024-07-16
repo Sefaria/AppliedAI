@@ -384,7 +384,7 @@ class VirtualHavruta:
         nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
         url_to_node = {}
         for node in nodes_linker:
-            if (url:=node.metadata["URL"])  not in url_to_node:
+            if (url:=node.metadata["url"])  not in url_to_node:
                 url_to_node[url] = node
             else:
                 url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
