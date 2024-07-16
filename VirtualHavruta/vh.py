@@ -23,7 +23,7 @@ import requests
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
-    get_id_graph_format, get_node_data, min_max_scaling
+    get_node_data, min_max_scaling
 
 
 # Main Virtual Havruta functionalities
@@ -78,9 +78,8 @@ class VirtualHavruta:
         self.top_k = config_emb_db['top_k']
         self.neo4j_deeplink = self.config['database']['kg']['neo4j_deeplink']
 
-        # Initiate logger and pagerank lookup table
+        # Initiate logger
         self.logger = logger
-        self.pr_table = pd.read_csv(self.config['files']['pr_table_path'])
 
         # Retrieve reference configs
         refs = self.config['references']
@@ -385,7 +384,7 @@ class VirtualHavruta:
         nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
         url_to_node = {}
         for node in nodes_linker:
-            if (url:=node.metadata["URL"])  not in url_to_node:
+            if (url:=node.metadata["url"])  not in url_to_node:
                 url_to_node[url] = node
             else:
                 url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
@@ -464,9 +463,9 @@ class VirtualHavruta:
         primary_doc_categories = [category.replace("Document Category: ", "") for category in self.primary_source_filter]
         query_params: dict = {"url": url, "primaryDocCategories": primary_doc_categories}
         for i in range(1, depth + 1):
-            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories' if filter_mode_nodes else ''
+            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.primaryDocCategory IN $primaryDocCategories' if filter_mode_nodes else ''
             query = f"""
-            MATCH (start {{`metadata.url`: $url}})
+            MATCH (start {{url: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
@@ -532,7 +531,7 @@ class VirtualHavruta:
         query_parameters = {"urls": urls}
         query_string="""
         MATCH (n)
-        WHERE n.`metadata.url` in $urls
+        WHERE any(substring IN $urls WHERE n.url CONTAINS substring)
         RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
@@ -603,25 +602,25 @@ class VirtualHavruta:
         # Iterate over each item in the retrieval results
         for (d, rel_score) in retrieval_res:
             # If the URL is not already in src_data_dict, add all reference information
-            if d.metadata["URL"] not in src_data_dict:
-                src_data_dict[d.metadata["URL"]] = d.page_content
-                src_ref_dict[d.metadata["URL"]] = d.metadata["source"]
-                src_rel_dict[d.metadata["URL"]] = rel_score
+            if d.metadata["url"] not in src_data_dict:
+                src_data_dict[d.metadata["url"]] = d.page_content
+                src_ref_dict[d.metadata["url"]] = d.metadata["source"]
+                src_rel_dict[d.metadata["url"]] = rel_score
             else:
                 # If the URL is already present, handle different versions or sources with the same URL
-                existing_content = src_data_dict[d.metadata["URL"]]
+                existing_content = src_data_dict[d.metadata["url"]]
                 # Concatenate page content for the same URL
-                src_data_dict[d.metadata["URL"]] = "...".join([existing_content, d.page_content])
+                src_data_dict[d.metadata["url"]] = "...".join([existing_content, d.page_content])
 
                 # Avoid duplicate source listings by separating with a pipe "|"
-                existing_ref = src_ref_dict[d.metadata["URL"]]
+                existing_ref = src_ref_dict[d.metadata["url"]]
                 existing_ref_list = existing_ref.split(" | ")
                 if d.metadata["source"] not in existing_ref_list:
-                    src_ref_dict[d.metadata["URL"]] = " | ".join([existing_ref, d.metadata["source"]])
+                    src_ref_dict[d.metadata["url"]] = " | ".join([existing_ref, d.metadata["source"]])
 
                 # Update the relevance score with the maximum score between existing and new
-                existing_rel_score = src_rel_dict[d.metadata["URL"]]
-                src_rel_dict[d.metadata["URL"]] = max(existing_rel_score, rel_score)
+                existing_rel_score = src_rel_dict[d.metadata["url"]]
+                src_rel_dict[d.metadata["url"]] = max(existing_rel_score, rel_score)
 
         # Sort the source relevance dictionary based on scores in descending order
         sorted_src_rel_dict = dict(
@@ -660,33 +659,6 @@ class VirtualHavruta:
             self.logger.error(f"MsgID={msg_id}. LLM CLASSIFICATION result was set to 0. Error message is {e}.")
             ref_class = 0
         return ref_class, tok_count
-
-    def retrieve_pr_score(self, doc_id: str, msg_id: str=''):
-        '''
-        Retrieves the page rank score for a given document identifier from a pre-defined page rank table.
-        
-        This function searches a dataframe for the page rank score associated with a specific document identifier (URL).
-        If found, it returns the highest score present for that identifier; if no data is available, it returns zero and logs a warning.
-        This function is critical for evaluating the importance or relevance of documents based on their page rank in various processing and decision-making contexts.
-        
-        Parameters:
-        doc_id (str): The document identifier for which the page rank score is to be retrieved.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        int or float: The highest page rank score found for the given document identifier. Returns 0 if no score is found.
-        
-        Notes:
-        The function uses logging to provide transparency about the retrieval process and to document any issues encountered, such as missing data for the specified document identifier.
-        '''
-        page_ranks = self.pr_table.loc[self.pr_table['metadata.url'] == doc_id, 'metadata.pagerank']
-        if not page_ranks.empty:
-            pr_score = page_ranks.max()
-            self.logger.info(f"MsgID={msg_id}. Retrieved pagerank score={pr_score}. Link is {doc_id}.")
-        else:
-            pr_score = 0
-            self.logger.warning("MsgID={msg_id}. Cannot retrieve pagerank score. Link is {doc_id}.")
-        return pr_score
 
     def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False) -> str:
         '''
@@ -1172,7 +1144,7 @@ class VirtualHavruta:
             top_node = self.get_node_corresponding_to_chunk(top_chunk)
             neighbor_nodes.append(top_node)
             neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
-                url=top_node.metadata["URL"],
+                url=top_node.metadata["url"],
                 direction=self.config["database"]["kg"]["direction"],
                 order=self.config["database"]["kg"]["order"],
                 filter_mode_nodes=filter_mode_nodes,
@@ -1332,10 +1304,12 @@ class VirtualHavruta:
         """
         page_rank_scores_raw = []
         for doc in documents:
-            page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
+            page_rank_score = doc.metadata["pagerank"]
             page_rank_scores_raw.append(page_rank_score)
-
+        self.logger.info(f"Retrieved raw pagerank scores={page_rank_scores_raw}")
+        
         page_rank_scores_scaled = min_max_scaling(page_rank_scores_raw)
+        self.logger.info(f"Scaled pagerank scores={page_rank_scores_scaled}")
         return np.array(page_rank_scores_scaled).reshape(-1, 1)
 
     def is_primary_document(self, doc: Document) -> bool:
@@ -1368,7 +1342,7 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
 
-    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20) -> list[Document]:
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True) -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
         Parameters
@@ -1377,19 +1351,26 @@ class VirtualHavruta:
             id of the node
         batch_size
             number of documents to retrieve per query, avoid memory issues
+        max_nodes
+            maximal number of nodes to go through
+        unique_url
+            whether nodes should be firstly filtered such that each has a unique url
 
         Returns
         -------
             id of the chunks corresponding to the node
         """
+        if unique_url:
+            seen_urls = set()
+            nodes = [node for node in nodes if node.metadata["url"] not in seen_urls and not seen_urls.add(node.metadata["url"])]
         query_parameters = [
-            {"seq_num": node.metadata["seq_num"], "url": node.metadata["URL"]}
-            for node in nodes
+            {"versionTitle": node.metadata["versionTitle"], "url": node.metadata["url"]}
+            for node in nodes[:max_nodes]
         ]
         query_string = """
         UNWIND $params AS param
         MATCH (n)
-        WHERE n.seq_num = param.seq_num AND n.URL = param.url
+        WHERE n.versionTitle = param.versionTitle AND n.url = param.url
         RETURN n
         """
         vector_records = []
@@ -1419,11 +1400,11 @@ class VirtualHavruta:
         -------
             document representing the node
         """
-        query_parameters = {"url": chunk.metadata["URL"], "id": get_id_graph_format(chunk.metadata["seq_num"])}
+        query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
         query_string="""
         MATCH (n)
-        WHERE n.`metadata.url`=$url
-        AND n.id=$id
+        WHERE n.url=$url
+        AND n.versionTitle=$versionTitle
         RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
