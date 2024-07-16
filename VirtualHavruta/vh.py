@@ -78,9 +78,8 @@ class VirtualHavruta:
         self.top_k = config_emb_db['top_k']
         self.neo4j_deeplink = self.config['database']['kg']['neo4j_deeplink']
 
-        # Initiate logger and pagerank lookup table
+        # Initiate logger
         self.logger = logger
-        self.pr_table = pd.read_csv(self.config['files']['pr_table_path'])
 
         # Retrieve reference configs
         refs = self.config['references']
@@ -660,33 +659,6 @@ class VirtualHavruta:
             self.logger.error(f"MsgID={msg_id}. LLM CLASSIFICATION result was set to 0. Error message is {e}.")
             ref_class = 0
         return ref_class, tok_count
-
-    def retrieve_pr_score(self, doc_id: str, msg_id: str=''):
-        '''
-        Retrieves the page rank score for a given document identifier from a pre-defined page rank table.
-        
-        This function searches a dataframe for the page rank score associated with a specific document identifier (URL).
-        If found, it returns the highest score present for that identifier; if no data is available, it returns zero and logs a warning.
-        This function is critical for evaluating the importance or relevance of documents based on their page rank in various processing and decision-making contexts.
-        
-        Parameters:
-        doc_id (str): The document identifier for which the page rank score is to be retrieved.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        int or float: The highest page rank score found for the given document identifier. Returns 0 if no score is found.
-        
-        Notes:
-        The function uses logging to provide transparency about the retrieval process and to document any issues encountered, such as missing data for the specified document identifier.
-        '''
-        page_ranks = self.pr_table.loc[self.pr_table['metadata.url'] == doc_id, 'metadata.pagerank']
-        if not page_ranks.empty:
-            pr_score = page_ranks.max()
-            self.logger.info(f"MsgID={msg_id}. Retrieved pagerank score={pr_score}. Link is {doc_id}.")
-        else:
-            pr_score = 0
-            self.logger.warning("MsgID={msg_id}. Cannot retrieve pagerank score. Link is {doc_id}.")
-        return pr_score
 
     def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False) -> str:
         '''
@@ -1332,10 +1304,12 @@ class VirtualHavruta:
         """
         page_rank_scores_raw = []
         for doc in documents:
-            page_rank_score = self.retrieve_pr_score(doc.metadata["URL"])
+            page_rank_score = doc.metadata["pagerank"]
             page_rank_scores_raw.append(page_rank_score)
-
+        self.logger.info(f"Retrieved raw pagerank scores={page_rank_scores_raw}")
+        
         page_rank_scores_scaled = min_max_scaling(page_rank_scores_raw)
+        self.logger.info(f"Scaled pagerank scores={page_rank_scores_scaled}")
         return np.array(page_rank_scores_scaled).reshape(-1, 1)
 
     def is_primary_document(self, doc: Document) -> bool:
