@@ -531,7 +531,7 @@ class VirtualHavruta:
         query_parameters = {"urls": urls}
         query_string="""
         MATCH (n)
-        WHERE n.`metadata.url` in $urls
+        WHERE any(substring IN $urls WHERE n.url CONTAINS substring)
         RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
