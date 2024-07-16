@@ -1151,7 +1151,7 @@ class VirtualHavruta:
                 score_central_node=6.0
             )
             neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
-            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes, max_nodes=1)
+            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
             candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
@@ -1342,7 +1342,7 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
 
-    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None) -> list[Document]:
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True) -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
         Parameters
@@ -1351,11 +1351,18 @@ class VirtualHavruta:
             id of the node
         batch_size
             number of documents to retrieve per query, avoid memory issues
+        max_nodes
+            maximal number of nodes to go through
+        unique_url
+            whether nodes should be firstly filtered such that each has a unique url
 
         Returns
         -------
             id of the chunks corresponding to the node
         """
+        if unique_url:
+            seen_urls = set()
+            nodes = [node for node in nodes if node.metadata["url"] not in seen_urls and not seen_urls.add(node.metadata["url"])]
         query_parameters = [
             {"versionTitle": node.metadata["versionTitle"], "url": node.metadata["url"]}
             for node in nodes[:max_nodes]
