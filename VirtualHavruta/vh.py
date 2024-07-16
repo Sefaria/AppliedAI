@@ -1151,7 +1151,7 @@ class VirtualHavruta:
                 score_central_node=6.0
             )
             neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
-            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
+            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes, max_nodes=1)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
             candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
@@ -1342,7 +1342,7 @@ class VirtualHavruta:
         id_graph_format = record["id"]
         return int(id_graph_format) + 1
 
-    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20) -> list[Document]:
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None) -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
         Parameters
@@ -1357,13 +1357,13 @@ class VirtualHavruta:
             id of the chunks corresponding to the node
         """
         query_parameters = [
-            {"seq_num": node.metadata["seq_num"], "url": node.metadata["URL"]}
-            for node in nodes
+            {"versionTitle": node.metadata["versionTitle"], "url": node.metadata["url"]}
+            for node in nodes[:max_nodes]
         ]
         query_string = """
         UNWIND $params AS param
         MATCH (n)
-        WHERE n.seq_num = param.seq_num AND n.URL = param.url
+        WHERE n.versionTitle = param.versionTitle AND n.url = param.url
         RETURN n
         """
         vector_records = []
