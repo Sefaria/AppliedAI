@@ -463,9 +463,9 @@ class VirtualHavruta:
         primary_doc_categories = [category.replace("Document Category: ", "") for category in self.primary_source_filter]
         query_params: dict = {"url": url, "primaryDocCategories": primary_doc_categories}
         for i in range(1, depth + 1):
-            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.`metadata.docCategory` IN $primaryDocCategories' if filter_mode_nodes else ''
+            source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.primaryDocCategory IN $primaryDocCategories' if filter_mode_nodes else ''
             query = f"""
-            MATCH (start {{`metadata.url`: $url}})
+            MATCH (start {{url: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
