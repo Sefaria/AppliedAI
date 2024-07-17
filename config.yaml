@@ -17,7 +17,6 @@ database:
     name: db_name
     neo4j_deeplink: http://neodash.graphapp.io/xyz
 
-
 # Slack-related parameters
 slack:
   slack_bot_token: slack_bot_token
@@ -38,10 +37,6 @@ llm_chain_setups:
   main_model_json: ['chain3']
   support_model: ['chain4', 'chain5', 'chain6']
   support_model_json: []
-
-# File paths
-files:
-  log_path: ./data/virtual-havruta.log
 
 # Reference Settings
 references:
