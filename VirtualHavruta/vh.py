@@ -807,7 +807,7 @@ class VirtualHavruta:
         now = datetime.now()
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         day_of_week = now.weekday() 
-        situ_info = f"\n [Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')} \n"
+        situ_info = f"[Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')}."
         self.logger.info(f"MsgID={msg_id}. SITUATIONAL INFO: {situ_info}")
         return situ_info
 
@@ -979,13 +979,13 @@ class VirtualHavruta:
                     if new_text not in p_src_data_dict[new_url]:
                         p_src_data_dict[new_url] += "..." + new_text
                 
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
             else:
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
                 
         #sorting it by page rank score
         p_sorted_src_rel_dict = dict(sorted(p_sorted_src_rel_dict.items(), key=lambda item: item[1], reverse=True))
-        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] \n----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} \n----p_src_data_dict: {p_src_data_dict} \n----p_src_ref_dict: {p_src_ref_dict}")
+        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] ----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} ----p_src_data_dict: {p_src_data_dict} ----p_src_ref_dict: {p_src_ref_dict}")
 
         return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
         
