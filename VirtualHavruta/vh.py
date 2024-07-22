@@ -1332,22 +1332,6 @@ class VirtualHavruta:
         """
         return any(s in doc.metadata['source'] for s in self.primary_source_filter)
 
-    def get_document_id_vector_db_format(self, node: "Node") -> int:
-        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
-
-        Parameters
-        ----------
-        node
-            from the graph database
-
-        Returns
-        -------
-            id of the document in the vector database
-        """
-        record: dict = get_node_data(node)
-        id_graph_format = record["id"]
-        return int(id_graph_format) + 1
-
     def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True, msg_id: str = '') -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
