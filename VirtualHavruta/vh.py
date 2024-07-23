@@ -108,8 +108,8 @@ class VirtualHavruta:
         ref_categories = ['classification', 'qa']
         no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
         ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
-        self.__dict__.update(ref_prompts)
         self.__dict__.update(no_ref_prompts)
+        self.__dict__.update(ref_prompts)
 
     def create_prompt_template(self, category: str, template: str, ref_mode: bool = False) -> ChatPromptTemplate:
         '''
@@ -198,7 +198,7 @@ class VirtualHavruta:
         '''
         return LLMChain(llm=llm, prompt=prompt_template, verbose=False)
 
-    def make_prediction(self, chain, query: str, action: str, msg_id: str='', ref_data: str = ''):
+    def make_prediction(self, chain, query: str, action: str, msg_id: str = '', ref_data: str = ''):
         '''
         Executes a prediction using a specified language model chain, providing logging and token tracking.
 
@@ -222,13 +222,13 @@ class VirtualHavruta:
         with get_openai_callback() as cb:
             try: 
                 res = chain.predict(human_input=query, ref_data=ref_data) if ref_data else chain.predict(human_input=query)
-                self.logger.info(f"MsgID={msg_id}. Spent {cb.total_tokens} tokens for {action}. Result is {res}.")
+                self.logger.info(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action}. Result is {res}.")
             except Exception as e:
-                self.logger.error(f"MsgID={msg_id}. Spent {cb.total_tokens} tokens for {action} but failed. Error is {e}.")
+                self.logger.error(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action} but failed. Error is {e}.")
                 res = ''
             return res, cb.total_tokens
 
-    def anti_attack(self, query: str, msg_id: str=''):
+    def anti_attack(self, query: str, msg_id: str = ''):
         '''
         Analyzes a query for potential attacks using a language model chain specialized in anti-attack tasks, returning the detection status, explanation, and token count.
         
@@ -251,11 +251,11 @@ class VirtualHavruta:
         try:
             detection, explanation = adv_res.split('@SEP@')
         except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. Error occurred during attack detection: {e}.")
+            self.logger.error(f"MsgID={msg_id}. [Anti-Attack] Error occurred during attack detection: {e}.")
             detection, explanation = 'N', ''
         return detection, explanation, tok_count
 
-    def adaptor(self, query: str, msg_id: str=''):
+    def adaptor(self, query: str, msg_id: str = ''):
         '''
         Processes a query using a language model chain optimized for adaptation tasks, returning the adapted result along with the token count.
 
@@ -274,7 +274,7 @@ class VirtualHavruta:
         adp_res, tok_count = self.make_prediction(self.chat_llm_chain_adaptor, query, "ADAPTATION", msg_id)
         return adp_res, tok_count
 
-    def editor(self, query: str, msg_id: str=''):
+    def editor(self, query: str, msg_id: str = ''):
         '''
         Performs editing on a given query using a language model chain optimized for editing tasks, returning the edited result along with the token count.
 
@@ -292,7 +292,7 @@ class VirtualHavruta:
         edit_res, tok_count = self.make_prediction(self.chat_llm_chain_editor, query, "EDITING", msg_id)
         return edit_res, tok_count
         
-    def optimizer(self, query: str, msg_id: str=''):
+    def optimizer(self, query: str, msg_id: str = ''):
         '''
         Optimizes a query using a chain of language models dedicated to prompt optimization, extracting various components from the optimization results.
 
@@ -321,11 +321,11 @@ class VirtualHavruta:
             challenge = opt_res_json['Challenge']
             proposal = opt_res_json['Potential-Directions']
         except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. Error occurred during PROMPT OPTIMIZATION: {e}.")
+            self.logger.error(f"MsgID={msg_id}. [OPTIMIZATION] Error occurred during PROMPT OPTIMIZATION: {e}.")
             translation = extraction = elaboration = quotation = challenge = proposal = ''
         return translation, extraction, elaboration, quotation, challenge, proposal, tok_count
 
-    def retrieve_docs(self, query: str, msg_id: str='', filter_mode: str='primary'):
+    def retrieve_docs(self, query: str, msg_id: str = '', filter_mode: str='primary'):
         '''
         Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
 
@@ -361,9 +361,9 @@ class VirtualHavruta:
     
     def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
                                                url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
-        """Retrieve nodes corresponding to linker results given a query.
+        """Retrieve nodes corresponding to linker results.
 
-        Get linker results given a query. Find and return the corresponding nodes in the graph database.
+        Given linker results, find and return the corresponding nodes in the graph database.
         There is a one-to-many relationship between linker result and graphs in the graph db.
 
         Parameters
@@ -383,6 +383,7 @@ class VirtualHavruta:
         """
         urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
                                     for linker_res in linker_results})
+        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Retrieving graph nodes using linker URLs: {urls_linker_results}")
         nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
         url_to_node = {}
         for node in nodes_linker:
@@ -390,10 +391,10 @@ class VirtualHavruta:
                 url_to_node[url] = node
             else:
                 url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
-
+        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Graph nodes retrieved using linker URLs: {url_to_node}")
         return list(url_to_node.values())
     
-    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple[Document, float]]:
+    def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple[Document, float]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Score the neighbors based upon their distance to the central node.
@@ -415,7 +416,7 @@ class VirtualHavruta:
         -------
             list of (document, score)
         """
-        self.logger.info(f"MsgID={msg_id}. Starting get_retrieval_results_knowledge_graph.")
+        self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Starting get_retrieval_results_knowledge_graph.")
         nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode_nodes=filter_mode_nodes, msg_id=msg_id)
         nodes = [node for node, _ in nodes_distances]
         docs =  [convert_node_to_doc(node) for node in nodes]
@@ -440,7 +441,7 @@ class VirtualHavruta:
         """
         return max(start_score - n_hops * score_decrease_per_hop, 0.0)
 
-    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str|None = None, msg_id: str = "") -> list[tuple["Node", int]]:
+    def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple["Node", int]]:
         """Given a url, query the graph database for the neighbors of the node with that url.
 
         Parameters
@@ -457,7 +458,7 @@ class VirtualHavruta:
         -------
             list of (node, distance) tuples, where distance is the number of hops from the central node
         """
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving graph neighbors for url: {url}.")
+        self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieving graph neighbors for url: {url}.")
         assert relationship in ["incoming", "outgoing", "both_ways"]
         start_node_operator: str = "<-" if relationship == "incoming" else "-"
         related_node_operator: str = "->" if relationship == "outgoing" else "-"
@@ -480,6 +481,7 @@ class VirtualHavruta:
                 parameters_=query_params,
                 database_=self.config["database"]["kg"]["name"],)
             nodes.extend(neighbor_nodes)
+        self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved graph neighbors: {nodes}.")
         return nodes
     
     def query_node_by_url(self, url: str,) -> str|None:
@@ -580,7 +582,7 @@ class VirtualHavruta:
         sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
 
-    def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str="") -> tuple[dict, dict, dict]:
+    def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str = '') -> tuple[dict, dict, dict]:
         """Merge chunks with the same url.
 
         This can occur for two reasons:
@@ -628,11 +630,11 @@ class VirtualHavruta:
         sorted_src_rel_dict = dict(
             sorted(src_rel_dict.items(), key=operator.itemgetter(1), reverse=True)
         )
-
+        self.logger.info(f"MsgID={msg_id}. [MERGE REFERENCE] sorted_src_rel_dict={sorted_src_rel_dict}, src_data_dict={src_data_dict}, src_ref_dict={src_ref_dict}.")
         # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
         return sorted_src_rel_dict, src_data_dict, src_ref_dict
 
-    def classification(self, query: str, ref_data: str, msg_id: str=''):
+    def classification(self, query: str, ref_data: str, msg_id: str = ''):
         '''
         Classifies the provided query and reference data using a chained language model, returning the classification result and token count.
 
@@ -658,7 +660,7 @@ class VirtualHavruta:
         try:
             ref_class = int(ref_class)
         except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. LLM CLASSIFICATION result was set to 0. Error message is {e}.")
+            self.logger.error(f"MsgID={msg_id}. [CLASSIFICATION] Result was set to 0. Error message is {e}.")
             ref_class = 0
         return ref_class, tok_count
 
@@ -711,8 +713,7 @@ class VirtualHavruta:
                 deeplinks.append(k)
 
             self.logger.info(
-                    f"MsgID={msg_id}. Included this reference for {ref_mode} references: {k}   "
-                    f"Relevance score = {sorted_src_rel_dict[k]}."
+                    f"MsgID={msg_id}. [GENERATE REFERENCE STRING] Included this reference for {ref_mode} references: {k}. Relevance score = {sorted_src_rel_dict[k]}."
                 )
 
         # Join the parts into final strings
@@ -721,7 +722,7 @@ class VirtualHavruta:
 
         return conc_ref_data, citations, deeplinks, n_citation
 
-    def generate_kg_deeplink(self, deeplinks, msg_id: str=''):
+    def generate_kg_deeplink(self, deeplinks, msg_id: str = ''):
         '''
         Generates a Knowledge Graph (KG) deep link URL by concatenating up to the first three secondary reference URLs provided.
         
@@ -760,13 +761,13 @@ class VirtualHavruta:
                 + "&neodash_url3="
                 + deeplinks[idx[2]]
             )
-            self.logger.info(f"MsgID={msg_id}. Created KG deep link for secondary references: {neo4j_deeplink}.")
+            self.logger.info(f"MsgID={msg_id}. [KG DEEP LINK] Created KG deep link for secondary references: {neo4j_deeplink}.")
         else:
             neo4j_deeplink = ""
-            self.logger.info(f"MsgID={msg_id}. Empty KG deep link for secondary references.")
+            self.logger.info(f"MsgID={msg_id}. [KG DEEP LINK] Empty KG deep link for secondary references.")
         return neo4j_deeplink
 
-    def qa(self, query: str, ref_data: str, msg_id: str=''):
+    def qa(self, query: str, ref_data: str, msg_id: str = ''):
         '''
         Executes a query against a language model chain, returning the response and token count.
 
@@ -807,8 +808,8 @@ class VirtualHavruta:
         now = datetime.now()
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         day_of_week = now.weekday() 
-        situ_info = f"\n [Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')} \n"
-        self.logger.info(f"MsgID={msg_id}. SITUATIONAL INFO: {situ_info}")
+        situ_info = f"[Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')}."
+        self.logger.info(f"MsgID={msg_id}. [SITUATIONAL INFO] Retrieved current situation: {situ_info}")
         return situ_info
 
     def query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=0, msg_id: str = ''):
@@ -854,16 +855,16 @@ class VirtualHavruta:
             # Simplify request by directly passing a dictionary to json parameter, which requests will automatically serialize
             self.logger.info(f"MsgID={msg_id}. [LINKER RETRIEVAL] Retrieving linker references using this json: {data}")
             response = requests.post(api_url, headers=headers, params=params, json=data)
-            self.logger.info(f"MsgID={msg_id}. Sefaria linker query response: {response}. {response.json()}.")
+            self.logger.info(f"MsgID={msg_id}. [LINKER RETRIEVAL] Sefaria linker query response: {response}. {response.json()}.")
             response.raise_for_status()  # Handles HTTP errors by raising an HTTPError exception for bad requests
             # response.json() will return the JSON response for a successful request
             return response.json()
         except requests.HTTPError as http_err:
-            self.logger.error(f"MsgID={msg_id}. HTTP error occurred: {http_err}.") # Specific HTTP error handling
-            return f"HTTP error occurred: {http_err}"  
+            self.logger.error(f"MsgID={msg_id}. [LINKER RETRIEVAL] HTTP error occurred: {http_err}.") # Specific HTTP error handling
+            return f"[LINKER RETRIEVAL] HTTP error occurred: {http_err}"  
         except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. Error occurred during Sefaria Linker Querying: {e}.") # General error handling
-            return f"Error occurred during Sefaria Linker Querying: {e}"
+            self.logger.error(f"MsgID={msg_id}. [LINKER RETRIEVAL] Error occurred during Sefaria Linker Querying: {e}.") # General error handling
+            return f"[LINKER RETRIEVAL] Error occurred during Sefaria Linker Querying: {e}"
 
     def retrieve_docs_linker(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary'):
         '''
@@ -919,7 +920,7 @@ class VirtualHavruta:
                     traverse(item)
 
         traverse(json_input)
-        self.logger.info(f"MsgID={msg_id}. Sefaria linker document retrieval results: {results}")
+        self.logger.info(f"MsgID={msg_id}. [LINKER RETRIEVAL] Sefaria linker document retrieval results: {results}")
         return results
 
     def merge_linker_refs(self, retrieved_docs: list, p_sorted_src_rel_dict: dict, p_src_data_dict: dict, p_src_ref_dict: dict, msg_id: str = ''):
@@ -979,18 +980,18 @@ class VirtualHavruta:
                     if new_text not in p_src_data_dict[new_url]:
                         p_src_data_dict[new_url] += "..." + new_text
                 
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
             else:
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: \n----new_reference_part: {new_reference_part} \n----pr_score: {pr_score} \n----new_category: {new_category} \n----new_text: {new_text} \n ")
+                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
                 
         #sorting it by page rank score
         p_sorted_src_rel_dict = dict(sorted(p_sorted_src_rel_dict.items(), key=lambda item: item[1], reverse=True))
-        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] \n----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} \n----p_src_data_dict: {p_src_data_dict} \n----p_src_ref_dict: {p_src_ref_dict}")
+        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] ----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} ----p_src_data_dict: {p_src_data_dict} ----p_src_ref_dict: {p_src_ref_dict}")
 
         return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
         
     def topic_ontology(self, extraction: str = '', msgid: str = ''):
-        self.logger.info(f"MsgID={msgid}. Starting topic ontology process.")
+        self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Starting topic ontology process.")
 
         def get_all_topics():
             cache_file = 'all_topics.json'
@@ -1003,13 +1004,13 @@ class VirtualHavruta:
                     if datetime.now() - cache_mtime < cache_expiry:
                         with open(cache_file, 'r') as file:
                             topics = json.load(file)
-                        self.logger.info(f"MsgID={msgid}. Loaded topics from cache.")
+                        self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Loaded topics from cache.")
                     else:
                         topics = fetch_and_cache_topics()
                 else:
                     topics = fetch_and_cache_topics()
             except Exception as e:
-                self.logger.error(f"MsgID={msgid}. Exception occurred: {str(e)}")
+                self.logger.error(f"MsgID={msgid}. [ONTOLOGY] Exception occurred: {str(e)}")
             
             return topics
 
@@ -1020,12 +1021,12 @@ class VirtualHavruta:
                     topics = response.json()
                     with open(cache_file, 'w') as file:
                         json.dump(topics, file)
-                    self.logger.info(f"MsgID={msgid}. Fetched and cached topics from Sefaria API.")
+                    self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Fetched and cached topics from Sefaria API.")
                 else:
-                    self.logger.error(f"MsgID={msgid}. Failed to fetch topics from Sefaria API.")
-                    raise Exception("Failed to fetch topics from Sefaria API")
+                    self.logger.error(f"MsgID={msgid}. [ONTOLOGY] Failed to fetch topics from Sefaria API.")
+                    raise Exception(f"MsgID={msgid}. Failed to fetch topics from Sefaria API")
             except Exception as e:
-                self.logger.error(f"MsgID={msgid}. Exception occurred while fetching topics: {str(e)}")
+                self.logger.error(f"MsgID={msgid}. [ONTOLOGY] Exception occurred while fetching topics: {str(e)}")
                 topics = []
             return topics
 
@@ -1041,7 +1042,7 @@ class VirtualHavruta:
                             break
                     if found:
                         break
-            self.logger.info(f"MsgID={msgid}. Found topic slugs: {slugs}")
+            self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Found topic slugs: {slugs}")
             return slugs
 
         def get_topic_descriptions(topic_slugs):
@@ -1052,12 +1053,12 @@ class VirtualHavruta:
                     topic_data = response.json()
                     if 'description' in topic_data and 'en' in topic_data['description']:
                         descriptions[slug] = topic_data['description']['en']
-            self.logger.info(f"MsgID={msgid}. Retrieved topic descriptions: {descriptions}")
+            self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Retrieved topic descriptions: {descriptions}")
             return descriptions
 
         # Process the extraction string
         topic_names = extraction.split(", ")
-        self.logger.info(f"MsgID={msgid}. Extracted topic names: {topic_names}")
+        self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Extracted topic names: {topic_names}")
 
         # Get all topics
         all_topics = get_all_topics()
@@ -1074,7 +1075,7 @@ class VirtualHavruta:
             if slug in descriptions:
                 final_descriptions[name] = descriptions[slug]
 
-        self.logger.info(f"MsgID={msgid}. Final topic descriptions: {final_descriptions}")
+        self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Final topic descriptions: {final_descriptions}")
         return final_descriptions
 
     def graph_traversal_retriever(self,
@@ -1111,24 +1112,25 @@ class VirtualHavruta:
             list of sorted chunks, sorted by relevance in descending order
         """
         # get seed chunks
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting graph_traversal_retriever.")
+        self.logger.info(f"MsgID={msg_id}. [GRAPH TRAVERSAL] Starting graph_traversal_retriever.")
         total_token_count = 0
         collected_chunks = []
         ranking_scores_collected_chunks = []
         if linker_results:
             if semantic_search_results:
-                self.logger.warning(f"MsgID={msg_id}. Both linker results and semantic search results are provided. Using linker results as seeds.")
+                self.logger.warning(f"MsgID={msg_id}. [GRAPH TRAVERSAL] Both linker results and semantic search results are provided. Using linker results as seeds.")
             seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
         elif semantic_search_results:
             seed_chunks_vector_db = [doc for doc, _ in semantic_search_results]
-            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db)
+            seed_chunks = self.get_chunks_corresponding_to_nodes(seed_chunks_vector_db, msg_id=msg_id)
         else:
-            raise ValueError("One of linker results or semantic search results need to be provided.")
+            raise ValueError(f"MsgID={msg_id}. [GRAPH TRAVERSAL] One of linker results or semantic search results need to be provided.")
         # rank seed chunks
         candidate_chunks, candidate_rankings, token_count = self.rank_documents(
             seed_chunks,
             enriched_query=enriched_query,
-            scripture_query=scripture_query
+            scripture_query=scripture_query,
+            msg_id=msg_id
         )
         total_token_count += token_count
 
@@ -1143,17 +1145,18 @@ class VirtualHavruta:
             if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
                 break
             neighbor_nodes = []
-            top_node = self.get_node_corresponding_to_chunk(top_chunk)
+            top_node = self.get_node_corresponding_to_chunk(top_chunk, msg_id=msg_id)
             neighbor_nodes.append(top_node)
             neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
                 url=top_node.metadata["url"],
                 direction=self.config["database"]["kg"]["direction"],
                 order=self.config["database"]["kg"]["order"],
                 filter_mode_nodes=filter_mode_nodes,
-                score_central_node=6.0
+                score_central_node=6.0,
+                msg_id=msg_id
             )
             neighbor_nodes += [node for node, _ in neighbor_nodes_scores]
-            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes)
+            candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes, msg_id=msg_id)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
             candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
@@ -1173,7 +1176,7 @@ class VirtualHavruta:
         return retrieval_res_kg,  total_token_count
 
     def get_linker_seed_chunks(self, linker_results: list[dict],
-                        filter_mode: str="primary", msg_id: str="") -> list[Document]:
+                        filter_mode: str="primary", msg_id: str = '') -> list[Document]:
         """Given linker results, get the corresponding seed chunks.
 
         First retrieve the seed nodes: linker results.
@@ -1192,13 +1195,13 @@ class VirtualHavruta:
         -------
             list of seed chunks
         """
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting get_linker_seed_chunks for KG search.")
+        self.logger.info(f"MsgID={msg_id}. [LINKER SEED CHUNKS] Starting get_linker_seed_chunks for KG search.")
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
-        seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds)
+        seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds, msg_id=msg_id)
         return seed_chunks
 
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
-                              filter_mode: str|None = None, msg_id: str = "") -> tuple[list[Document], list[float], int]:
+                              filter_mode: str|None = None, msg_id: str = '') -> tuple[list[Document], list[float], int]:
         """Rank the document candidates in descending order based on their relevance to the query.
 
         Return a new list, do not modify the input list.
@@ -1221,28 +1224,29 @@ class VirtualHavruta:
         -------
             ranked chunks, rating_scores, total_token_count
         """
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Starting rank_chunk_candidates.")
+        self.logger.info(f"MsgID={msg_id}. [RERANKING] Starting reranking chunks.")
         total_token_count = 0
         if not semantic_similarity_scores:
             if not enriched_query:
-                raise ValueError("Either provide semantic similarity scores or enriched query.")
-            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query)
-        reference_classes, token_count = self.get_reference_class(chunks, scripture_query=scripture_query, enriched_query=enriched_query)
+                raise ValueError(f"MsgID={msg_id}. Either provide semantic similarity scores or enriched query.")
+            semantic_similarity_scores: np.array = self.compute_semantic_similarity_documents_query(chunks, query=enriched_query, msg_id=msg_id)
+        reference_classes, token_count = self.get_reference_class(chunks, scripture_query=scripture_query, enriched_query=enriched_query, msg_id=msg_id)
         total_token_count += token_count
 
         if filter_mode == "secondary":
             page_rank_scores = np.ones((len(chunks), 1), dtype=float)
         else:
-            page_rank_scores: np.array = self.get_page_rank_scores(chunks)
+            page_rank_scores: np.array = self.get_page_rank_scores(chunks, msg_id=msg_id)
 
         # Combine the scores
         final_ranking_score = semantic_similarity_scores * reference_classes * page_rank_scores
         sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
         ranking_scores = np.sort(final_ranking_score, axis=0)[::-1].reshape(-1).tolist()
         sorted_chunks = [chunks[i] for i in sort_indices]
+        self.logger.info(f"MsgID={msg_id}. [RERANKING] sorted_chunks={sorted_chunks}, ranking_scores={ranking_scores}")
         return sorted_chunks, ranking_scores, total_token_count
 
-    def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str) -> np.array:
+    def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str, msg_id: str = '') -> np.array:
         """Compute the semantic similarity between a document and a query.
 
         Parameters
@@ -1263,9 +1267,9 @@ class VirtualHavruta:
             relevance_score_function = self.neo4j_vector._select_relevance_score_fn()
             return relevance_score_function(similarity).reshape(-1, 1)
         else:
-            raise NotImplementedError(f"Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
+            raise NotImplementedError(f"MsgID={msg_id}. Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
 
-    def get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str) -> np.array:
+    def get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str, msg_id: str = '') -> np.array:
         """Get the reference class for each document based on the query.
 
         Parameters
@@ -1286,12 +1290,12 @@ class VirtualHavruta:
         for doc in documents:
             ref_data = doc.page_content + "... --Origin of this " + doc.metadata["source"]
             query = scripture_query if self.is_primary_document(doc) else enriched_query
-            ref_class, token_count = self.classification(query=query, ref_data=ref_data)
+            ref_class, token_count = self.classification(query=query, ref_data=ref_data, msg_id=msg_id)
             total_token_count += token_count
             reference_classes.append(ref_class)
         return np.array(reference_classes).reshape(-1, 1), total_token_count
 
-    def get_page_rank_scores(self, documents: list[Document]) -> np.array:
+    def get_page_rank_scores(self, documents: list[Document], msg_id: str = '') -> np.array:
         """Get the PageRank scores for each document.
 
         Perform batch-wise min-max scaling.
@@ -1308,10 +1312,10 @@ class VirtualHavruta:
         for doc in documents:
             page_rank_score = doc.metadata["pagerank"]
             page_rank_scores_raw.append(page_rank_score)
-        self.logger.info(f"Retrieved raw pagerank scores={page_rank_scores_raw}")
+        self.logger.info(f"MsgID={msg_id}. [PAGERANK] Retrieved raw pagerank scores={page_rank_scores_raw}")
         
         page_rank_scores_scaled = min_max_scaling(page_rank_scores_raw)
-        self.logger.info(f"Scaled pagerank scores={page_rank_scores_scaled}")
+        self.logger.info(f"MsgID={msg_id}. [PAGERANK] Scaled pagerank scores={page_rank_scores_scaled}")
         return np.array(page_rank_scores_scaled).reshape(-1, 1)
 
     def is_primary_document(self, doc: Document) -> bool:
@@ -1328,23 +1332,7 @@ class VirtualHavruta:
         """
         return any(s in doc.metadata['source'] for s in self.primary_source_filter)
 
-    def get_document_id_vector_db_format(self, node: "Node") -> int:
-        """Given a node from the graph database, return the document id of the corresponding document in the vector database.
-
-        Parameters
-        ----------
-        node
-            from the graph database
-
-        Returns
-        -------
-            id of the document in the vector database
-        """
-        record: dict = get_node_data(node)
-        id_graph_format = record["id"]
-        return int(id_graph_format) + 1
-
-    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True) -> list[Document]:
+    def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True, msg_id: str = '') -> list[Document]:
         """Given a list of nodes, return the chunks corresponding to that node.
 
         Parameters
@@ -1369,6 +1357,7 @@ class VirtualHavruta:
             {"versionTitle": node.metadata["versionTitle"], "url": node.metadata["url"]}
             for node in nodes[:max_nodes]
         ]
+        self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Using the following nodes to find corresponding chunks: {query_parameters}")
         query_string = """
         UNWIND $params AS param
         MATCH (n)
@@ -1380,17 +1369,18 @@ class VirtualHavruta:
             try:
                 vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
             except neo4j.exceptions.ServiceUnavailable:
-                self.logger.warning("Neo4j database is unavailable. Retrying.")
+                self.logger.warning(f"MsgID={msg_id}. Neo4j database is unavailable. Retrying.")
                 sleep(1)
                 vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
             except BufferError:
-                self.logger.warning("Neo4j encountered an error. Retrying.")
+                self.logger.warning(f"MsgID={msg_id}. Neo4j encountered an error. Retrying.")
                 sleep(1)
                 vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
             vector_records += vector_records_batch
+        self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Found node-corresponding chunks: {vector_records}")
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
-    def get_node_corresponding_to_chunk(self, chunk: Document) -> Document:
+    def get_node_corresponding_to_chunk(self, chunk: Document, msg_id: str = '') -> Document:
         """Given a chunk, return the node corresponding to that chunk.
 
         Parameters
@@ -1403,6 +1393,7 @@ class VirtualHavruta:
             document representing the node
         """
         query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
+        self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Using the following chunk to find a corresponding node: {query_parameters}")
         query_string="""
         MATCH (n)
         WHERE n.url=$url
@@ -1416,4 +1407,5 @@ class VirtualHavruta:
             database_=self.config["database"]["kg"] ["name"],)
         assert len(nodes) == 1
         node = nodes[0]
+        self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Found chunk-corresponding node: {node}")
         return convert_node_to_doc(node)
