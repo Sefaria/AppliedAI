@@ -108,8 +108,8 @@ class VirtualHavruta:
         ref_categories = ['classification', 'qa']
         no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
         ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
-        self.__dict__.update(ref_prompts)
         self.__dict__.update(no_ref_prompts)
+        self.__dict__.update(ref_prompts)
 
     def create_prompt_template(self, category: str, template: str, ref_mode: bool = False) -> ChatPromptTemplate:
         '''
