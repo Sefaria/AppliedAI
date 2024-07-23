@@ -106,8 +106,8 @@ class VirtualHavruta:
         '''
         no_ref_categories = ['anti_attack', 'adaptor', 'editor', 'optimization']
         ref_categories = ['classification', 'qa']
-        ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
-        no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
+        no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
+        ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
         self.__dict__.update(ref_prompts)
         self.__dict__.update(no_ref_prompts)
 
