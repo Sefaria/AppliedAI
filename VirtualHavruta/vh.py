@@ -11,8 +11,8 @@ import pandas as pd
 from langchain.utils.math import cosine_similarity
 from langchain_core.documents import Document
 # Import custom langchain modules for NLP operations and vector search
-from langchain.vectorstores.neo4j_vector import Neo4jVector
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Neo4jVector
+from langchain_community.embeddings import OpenAIEmbeddings
 from langchain.chains import LLMChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage
