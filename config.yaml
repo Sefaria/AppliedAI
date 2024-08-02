@@ -1,3 +1,10 @@
+# Environment-related parameters
+environment:
+  use_app_mention: false
+  show_thought_process: true
+  show_kg_link: true
+  log_name: Virtual-Havruta
+
 # DB-related parameters
 database:
   embed:
