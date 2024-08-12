@@ -344,7 +344,7 @@ class VirtualHavruta:
         Raises:
         ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
         '''
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Simple semantic search at work. Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
             query, self.top_k,
