@@ -23,7 +23,7 @@ import requests
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
-    get_node_data, min_max_scaling
+    min_max_scaling
 
 
 # Main Virtual Havruta functionalities
