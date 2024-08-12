@@ -12,6 +12,7 @@ database:
     username: user
     password: password@dev
     top_k: 15
+    metadata_fields: ['metadata_field_name1', 'metadata_field_name1']
   kg:
     url: bolt://publicip_kg:7687
     username: user
