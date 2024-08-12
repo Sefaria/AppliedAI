@@ -23,7 +23,7 @@ import requests
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
-    get_node_data, min_max_scaling
+    min_max_scaling
 
 
 # Main Virtual Havruta functionalities
@@ -344,10 +344,10 @@ class VirtualHavruta:
         Raises:
         ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
         '''
-        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Simple semantic search at work. Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
-            query.lower(), self.top_k,
+            query, self.top_k,
             )
         # Filter the documents based on whether we're looking for primary or secondary sources
         if filter_mode == 'primary':
@@ -358,6 +358,29 @@ class VirtualHavruta:
             raise ValueError(f"MsgID={msg_id}. Invalid filter_mode: {filter_mode}")
         retrieval_res = list(filter(predicate, retrieved_docs))
         return retrieval_res
+
+    def retrieve_docs_metadata_filtering(self, query: str, msg_id: str = '', metadata_fiter: dict|None=None):
+        '''
+        Retrieves documents that match a specified query and filters them based on their metadata, using a similarity search.
+
+        This function performs a similarity search based on the provided query and retrieves documents that match the metadata conditions as defined by a metadata_filter.
+        The results are filtered by applying the metadata filters during semantic search.
+        The function logs the process to ensure transparency.
+        
+        Parameters:
+        query (str): The query string used to search for relevant documents.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        metadata_fiter (dict): The metadata filter dictionary used to filter the search results during semantic search.
+        
+        Returns:
+        list: A list of documents that meet the criteria of the specified metadata filter.
+        '''
+        self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {query} and this metadata filter {metadata_fiter}")
+        # Convert primary_source_filter to a set for efficient lookup
+        retrieved_res = self.neo4j_vector.similarity_search_with_relevance_scores(
+            query, self.top_k, filter=metadata_fiter
+            )
+        return retrieved_res
     
     def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
                                                url_prefix: str = "https://www.sefaria.org/") -> list[Document]:

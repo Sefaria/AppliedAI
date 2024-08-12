@@ -1,6 +1,7 @@
 import sys
 import logging
 from typing import Iterable
+import json, re
 
 from VirtualHavruta.document import ChunkDocument
 
@@ -128,3 +129,138 @@ def convert_vector_db_record_to_doc(record) -> ChunkDocument:
         else page_content,
         metadata=record
     )
+
+def load_selected_keys(file_path: str, selected_keys: list) -> dict:
+    """
+    Loads specific keys from a JSON file and returns them as a dictionary.
+
+    This function reads a JSON file from the given file path and filters the data 
+    to include only the keys specified in the `selected_keys` list. It then returns 
+    a dictionary containing these key-value pairs.
+
+    Parameters:
+    file_path (str): The path to the JSON file to be loaded.
+    selected_keys (list): A list of keys to be extracted from the JSON file.
+
+    Returns:
+    dict: A dictionary containing only the key-value pairs corresponding to the 
+          specified `selected_keys`. If a key is not found in the JSON data, it is 
+          ignored.
+
+    Example:
+    If the JSON file contains:
+    {
+        "name": "John",
+        "age": 30,
+        "city": "New York"
+    }
+
+    And `selected_keys` is ["name", "city"], the function will return:
+    {
+        "name": "John",
+        "city": "New York"
+    }
+    """
+    # Open and load the JSON file
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    
+    # Create a new dictionary with only the selected keys
+    filtered_data = {key: data[key] for key in selected_keys if key in data}
+    
+    return filtered_data
+    
+def find_matched_filters(query: str, metadata_ranges: dict) -> dict:
+    """
+    Scans the input query to find matches for strings in the provided JSON data. 
+    Only the longest, non-overlapping matches are returned for each key.
+    
+    Parameters:
+    query (str): The input string to be searched.
+    metadata_ranges (dict): A dictionary where keys map to lists of strings. 
+                      The function will check if any strings from these lists are present in the query.
+
+    Returns:
+    dict: A dictionary where each key corresponds to those in the input metadata_ranges 
+          and the values are lists of matched strings found in the query.
+    
+    Example:
+    metadata_ranges = {
+        "key1": ["foo", "bar", "multi word", "multi", ""],
+        "key2": ["another phrase", "phrase", "baz", None, "ample"]
+    }
+
+    query = "This is an example with multi word and foo inside another phrase."
+
+    The result will be:
+    {
+        "key1": ["multi word", "foo"],
+        "key2": ["another phrase"]
+    }
+    """  
+    # Dictionary to store matches
+    matched_filters = {}
+    
+    # Iterate over the keys and lists in the JSON data
+    for key, string_list in metadata_ranges.items():
+        matched_strings = []
+        # Sort the list by length of the strings in descending order
+        sorted_string_list = sorted([s for s in string_list if s and s.strip()], key=len, reverse=True)
+        # Track the parts of the query that have already been matched
+        matched_query = query
+        
+        # Iterate over each string in the list
+        for s in sorted_string_list:    
+            # Check if the string (one-word or multi-word) is found in the query
+            if s and s.strip():
+                # Use regex to match whole words
+                pattern = r'\b' + re.escape(s.lower()) + r'\b'
+                if re.search(pattern, matched_query):
+                    matched_strings.append(s)
+                    # Replace the matched portion with a placeholder to avoid overlapping matches
+                    matched_query = re.sub(pattern, '', matched_query, count=1)
+
+        # If any matches are found, add them to the matches dictionary
+        if matched_strings:
+            matched_filters[key] = matched_strings
+    
+    return matched_filters
+
+def construct_db_filter(matched_filters: dict) -> dict:
+    """
+    Constructs a database filter string based on the given matched_filters.
+
+    Parameters:
+    matched_filters (dict): A dictionary containing optional keys 'primaryDocCategory' and 
+                     'authorNames', whose values are lists of strings.
+
+    Returns:
+    dict: A dictionary representing the DB filter string for querying.
+
+    Example:
+    If matched_filters is {'authorNames': ['Rashi']}, the function will return:
+    {"authorNames": {"$in": ['Rashi']}}
+    
+    If matched_filters is {'primaryDocCategory': ['String A', 'String B'], 'authorNames': ['String C']}, 
+    the function will return:
+    {"$or": [{"primaryDocCategory": {"$in": ['String A', 'String B']}}, 
+             {"authorNames": {"$in": ['String C']}}]}
+    """
+    
+    filter_conditions = []
+    
+    # Check if 'primaryDocCategory' exists and is a non-empty list
+    if 'primaryDocCategory' in matched_filters and matched_filters['primaryDocCategory']:
+        filter_conditions.append({"primaryDocCategory": {"$in": matched_filters['primaryDocCategory']}})
+    
+    # Check if 'authorNames' exists and is a non-empty list
+    if 'authorNames' in matched_filters and matched_filters['authorNames']:
+        filter_conditions.append({"authorNames": {"$in": matched_filters['authorNames']}})
+    
+    # If there are multiple conditions, use the $or operator
+    if len(filter_conditions) > 1:
+        return {"$or": filter_conditions}
+    elif filter_conditions:
+        return filter_conditions[0]  # Return the single condition without $or
+    else:
+        return {}  # Return an empty dict if no conditions are provided
