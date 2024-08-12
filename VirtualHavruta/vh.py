@@ -347,7 +347,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
         retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(
-            query.lower(), self.top_k,
+            query, self.top_k,
             )
         # Filter the documents based on whether we're looking for primary or secondary sources
         if filter_mode == 'primary':
