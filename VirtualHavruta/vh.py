@@ -1015,9 +1015,9 @@ class VirtualHavruta:
         
     def topic_ontology(self, extraction: str = '', msgid: str = ''):
         self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Starting topic ontology process.")
-
+        cache_file = 'all_topics.json'
+        
         def get_all_topics():
-            cache_file = 'all_topics.json'
             cache_expiry = timedelta(days=1)
             topics = []  # Ensure topics is always initialized
 
@@ -1034,7 +1034,6 @@ class VirtualHavruta:
                     topics = fetch_and_cache_topics()
             except Exception as e:
                 self.logger.error(f"MsgID={msgid}. [ONTOLOGY] Exception occurred: {str(e)}")
-            
             return topics
 
         def fetch_and_cache_topics():
