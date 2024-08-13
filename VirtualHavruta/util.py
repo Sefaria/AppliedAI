@@ -264,3 +264,42 @@ def construct_db_filter(matched_filters: dict) -> dict:
         return filter_conditions[0]  # Return the single condition without $or
     else:
         return {}  # Return an empty dict if no conditions are provided
+    
+def merge_topics(extraction: str = '', matched_topics: dict = {}) -> str:
+    """
+    Merges a comma-separated string of topics with an existing dictionary of lists of topics,
+    avoiding duplicates.
+
+    Parameters:
+    - extraction (str): A string of topics separated by commas (e.g., 'topic1, topic2, topic3').
+    - matched_topics (dict): A dictionary with lists of topics that have already been matched.
+
+    Returns:
+    - str: A string of combined topics, separated by commas with no duplicates.
+    """
+    # Split the extraction string into a list of topics
+    extraction_lst = extraction.split(', ')
+
+    # Create a list and a set of topics from all lists within the dictionary for quick membership testing
+    joint_matched_topics = []
+    joint_matched_topics_set = set()
+
+    for topics in matched_topics.values():
+        for topic in topics:
+            if topic.lower() not in joint_matched_topics_set:
+                joint_matched_topics.append(topic)
+                joint_matched_topics_set.add(topic.lower())
+    
+    # Iterate over each topic in the extracted list
+    for topic in extraction_lst:
+        # Convert topic to lowercase
+        lower_topic = topic.lower()
+        # Check if the lowercased topic is not already in the set
+        if lower_topic not in joint_matched_topics_set:
+            # If the topic is new, append it to the matched_topics list
+            joint_matched_topics.append(topic)
+            # Add the lowercased topic to the set to keep track of seen topics
+            joint_matched_topics_set.add(lower_topic)
+
+    # Join the updated matched topics list into a string separated by commas
+    return ', '.join(joint_matched_topics)
