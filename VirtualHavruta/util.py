@@ -207,7 +207,7 @@ def find_matched_filters(query: str, metadata_ranges: dict) -> dict:
         # Sort the list by length of the strings in descending order
         sorted_string_list = sorted([s for s in string_list if s and s.strip()], key=len, reverse=True)
         # Track the parts of the query that have already been matched
-        matched_query = query
+        matched_query = query.lower()
         
         # Iterate over each string in the list
         for s in sorted_string_list:    
