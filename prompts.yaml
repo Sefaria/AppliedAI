@@ -4,27 +4,32 @@ system:
     '''
     Dummy prompt
     '''
-  
+
   adaptor: >
     '''
     Dummy prompt
     '''
-  
+
   editor: >
     '''
     Dummy prompt
     '''
-  
+
   optimization: >
     '''
     Dummy prompt
     '''
-  
+
+  selector: >
+    '''
+    Dummy prompt
+    '''
+
   classification: >
     '''
     Dummy prompt
     '''
-  
+
   qa: >
     '''
     Dummy prompt

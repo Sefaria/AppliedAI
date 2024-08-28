@@ -105,7 +105,7 @@ class VirtualHavruta:
 
         '''
         no_ref_categories = ['anti_attack', 'adaptor', 'editor', 'optimization']
-        ref_categories = ['classification', 'qa']
+        ref_categories = ['classification', 'qa', 'selector']
         no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
         ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
         self.__dict__.update(no_ref_prompts)
@@ -222,7 +222,7 @@ class VirtualHavruta:
         with get_openai_callback() as cb:
             try: 
                 res = chain.predict(human_input=query, ref_data=ref_data) if ref_data else chain.predict(human_input=query)
-                self.logger.info(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action}. Result is {res}.")
+                self.logger.info(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action}. Query={query}. Reference data={ref_data}. Result={res}.")
             except Exception as e:
                 self.logger.error(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action} but failed. Error is {e}.")
                 res = ''
@@ -339,7 +339,7 @@ class VirtualHavruta:
         filter_mode (str): The mode to filter the search results by 'primary' or 'secondary' to determine the relevance of the sources.
         
         Returns:
-        list: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
+        retrieval_res: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
         
         Raises:
         ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
@@ -568,6 +568,45 @@ class VirtualHavruta:
             database_=self.config["database"]["kg"]["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
+    def select_reference(self, query: str, retrieval_res, msg_id: str = ''):
+        '''
+        Based on the provided query and retrieval_res, select useful references using a chained language model, returning the selected retrieval_res and token count.
+
+        This function selects retrieval results based on a language model specifically tuned for selection tasks.
+        It captures the selected retrieval results, which are expected to be a list of documents, and the count of tokens used by the model. 
+        If the function's output cannot be converted to a list of documents due to an error, the function logs the error and defaults the selected results to [].
+        This ensures robust error handling and maintains the integrity of the selection process under all conditions.
+        
+        Parameters:
+        query (str): The query string to be referred to by the model.
+        retrieval_res (list): A list of retrieved documents.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the selected retrieval results (list of documents) and the token count (int) used in generating that result.
+        
+        Raises:
+        Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [] and 0.
+        '''
+        
+        try:
+            # Construct reference data string        
+            conc_ref_data = ''
+            for n, (d, _) in enumerate(retrieval_res):
+                # Concatenate reference data and its source
+                numbered_ref_data = f'#{n}# {d.page_content}... --Origin of this {d.metadata["source"]} '
+                conc_ref_data += numbered_ref_data
+            selected_idx, tok_count = self.selector(query, conc_ref_data, msg_id)
+            selected_retrieval_res = [retrieval_res[i] for i in selected_idx]
+        except Exception as e:
+            self.logger.error(
+                f"MsgID={msg_id}. Reference selection result was set to []. Error message is {e}."
+            )
+            selected_retrieval_res = []
+            tok_count = 0
+        
+        return selected_retrieval_res, tok_count
+
     def sort_reference(self, scripture_query: str, enriched_query: str, retrieval_res, filter_mode: str|None = 'primary', msg_id: str = ''):
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
@@ -656,6 +695,43 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [MERGE REFERENCE] sorted_src_rel_dict={sorted_src_rel_dict}, src_data_dict={src_data_dict}, src_ref_dict={src_ref_dict}.")
         # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
         return sorted_src_rel_dict, src_data_dict, src_ref_dict
+
+    def selector(self, query: str, ref_data: str, msg_id: str = ""):
+        '''
+        Based on the provided query and numbered reference data, select useful references using a chained language model, returning the selected indices and token count.
+
+        This function sends a query and reference data to a language model specifically tuned for selection tasks.
+        It captures the selection result, which is expected to be a list of numerical values, and the count of tokens used by the model. 
+        If the model's output cannot be converted to a list of integers due to an error, the function logs the error and defaults the selection to [].
+        This ensures robust error handling and maintains the integrity of the selection process under all conditions.
+        
+        Parameters:
+        query (str): The query string to be referred to by the model.
+        ref_data (str): Reference data related to the query that may be used to answer the query.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+        
+        Returns:
+        tuple: A tuple containing the selected indices (list of int) and the token count (int) used in generating that result.
+        
+        Raises:
+        Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [].
+        '''
+        
+        response, tok_count = self.make_prediction(
+            self.chat_llm_chain_selector, query, "SELECTOR", msg_id, ref_data
+        )
+        try:
+            if response.strip() == ',':
+                selected_idx = []
+            else:
+                selected_idx = [int(x) for x in response.split(',') if x]
+        except Exception as e:
+            self.logger.error(
+                f"MsgID={msg_id}. LLM SELECTOR result was set to []. Error message is {e}."
+            )
+            selected_idx = []
+        
+        return selected_idx, tok_count
 
     def classification(self, query: str, ref_data: str, msg_id: str = ''):
         '''
