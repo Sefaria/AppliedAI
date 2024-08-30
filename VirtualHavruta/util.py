@@ -231,8 +231,8 @@ def construct_db_filter(matched_filters: dict) -> dict:
     Constructs a database filter string based on the given matched_filters.
 
     Parameters:
-    matched_filters (dict): A dictionary containing optional keys 'primaryDocCategory' and 
-                     'authorNames', whose values are lists of strings.
+    matched_filters (dict): A dictionary containing optional keys 'primaryDocCategory', 
+                     'authorNames', etc., whose values are lists of strings.
 
     Returns:
     dict: A dictionary representing the DB filter string for querying.
@@ -247,15 +247,10 @@ def construct_db_filter(matched_filters: dict) -> dict:
              {"authorNames": {"$in": ['String C']}}]}
     """
     
+    # Create filter conditions for each field
     filter_conditions = []
-    
-    # Check if 'primaryDocCategory' exists and is a non-empty list
-    if 'primaryDocCategory' in matched_filters and matched_filters['primaryDocCategory']:
-        filter_conditions.append({"primaryDocCategory": {"$in": matched_filters['primaryDocCategory']}})
-    
-    # Check if 'authorNames' exists and is a non-empty list
-    if 'authorNames' in matched_filters and matched_filters['authorNames']:
-        filter_conditions.append({"authorNames": {"$in": matched_filters['authorNames']}})
+    for k, v in matched_filters.items():
+        filter_conditions.append({k: {"$in": v}})
     
     # If there are multiple conditions, use the $or operator
     if len(filter_conditions) > 1:
