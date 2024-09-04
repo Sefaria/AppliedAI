@@ -1169,9 +1169,10 @@ class VirtualHavruta:
 
         # Create a dictionary with topic names as keys and their descriptions as values
         final_descriptions = {}
-        for name, slug in zip(topic_names, topic_slugs):
-            if slug in descriptions:
-                final_descriptions[name] = descriptions[slug]
+        for slug, description in descriptions.items():
+            desc = description.strip()
+            if desc:
+                final_descriptions[slug] = desc
 
         self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Final topic descriptions: {final_descriptions}")
         return final_descriptions
