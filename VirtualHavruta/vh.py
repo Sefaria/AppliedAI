@@ -1459,7 +1459,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Using the following nodes to find corresponding chunks: {query_parameters}")
         query_string = """
         UNWIND $params AS param
-        MATCH (n)
+        MATCH (n:Chunk)
         WHERE n.versionTitle = param.versionTitle AND n.url = param.url
         RETURN n
         """
