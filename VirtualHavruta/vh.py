@@ -507,7 +507,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved graph neighbors: {nodes}.")
         return nodes
     
-    def query_node_by_url(self, url: str,) -> str|None:
+    def query_kg_node_by_url(self, url: str) -> str|None:
         """Given a url, query the graph database for the node with that url.
 
         If more than one node has the same url, return only one.
@@ -519,22 +519,21 @@ class VirtualHavruta:
 
         Returns
         -------
-            unique id of the node
-        """
+            node
+        """        
         query_parameters = {"url": url}
         query_string="""
-        MATCH (n)
-        WHERE n.`metadata.url`=$url
-        RETURN n.id
-        LIMIT 1
+        MATCH (n:Records)
+        WHERE n.url=$url
+        RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
-            id, _, _ = driver.execute_query(
+            nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
             database_=self.config["database"]["kg"] ["name"],)
-        if id:
-            return id[0].data()["n.id"]
+        if nodes:
+            return nodes
         else:
             return None
 
