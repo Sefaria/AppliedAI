@@ -556,7 +556,7 @@ class VirtualHavruta:
         """
         query_parameters = {"urls": urls}
         query_string="""
-        MATCH (n)
+        MATCH (n:Records)
         WHERE any(substring IN $urls WHERE n.url CONTAINS substring)
         RETURN n
         """
