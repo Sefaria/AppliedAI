@@ -1493,7 +1493,7 @@ class VirtualHavruta:
         query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
         self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Using the following chunk to find a corresponding node: {query_parameters}")
         query_string="""
-        MATCH (n)
+        MATCH (n:Records)
         WHERE n.url=$url
         AND n.versionTitle=$versionTitle
         RETURN n
