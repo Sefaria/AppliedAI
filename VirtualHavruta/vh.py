@@ -491,7 +491,7 @@ class VirtualHavruta:
         for i in range(1, depth + 1):
             source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.primaryDocCategory IN $primaryDocCategories' if filter_mode_nodes else ''
             query = f"""
-            MATCH (start {{url: $url}})
+            MATCH (start:Records {{url: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
@@ -506,36 +506,6 @@ class VirtualHavruta:
             nodes.extend(neighbor_nodes)
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved graph neighbors: {nodes}.")
         return nodes
-    
-    def query_kg_node_by_url(self, url: str) -> str|None:
-        """Given a url, query the graph database for the node with that url.
-
-        If more than one node has the same url, return only one.
-
-        Parameters
-        ----------
-        url
-            of node
-
-        Returns
-        -------
-            node
-        """        
-        query_parameters = {"url": url}
-        query_string="""
-        MATCH (n:Records)
-        WHERE n.url=$url
-        RETURN n
-        """
-        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
-            nodes, _, _ = driver.execute_query(
-            query_string,
-            parameters_=query_parameters,
-            database_=self.config["database"]["kg"] ["name"],)
-        if nodes:
-            return nodes
-        else:
-            return None
 
     def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
         """Given a list of urls, query the graph database for the nodes with those urls.
