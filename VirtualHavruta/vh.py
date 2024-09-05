@@ -491,7 +491,7 @@ class VirtualHavruta:
         for i in range(1, depth + 1):
             source_filter = f'AND {"NOT" if filter_mode_nodes == "secondary" else ""} neighbor.primaryDocCategory IN $primaryDocCategories' if filter_mode_nodes else ''
             query = f"""
-            MATCH (start {{url: $url}})
+            MATCH (start:Records {{url: $url}})
             WITH start
             MATCH (start){start_node_operator}[:FROM_TO*{i}]{related_node_operator}(neighbor)
             WHERE neighbor <> start
@@ -506,37 +506,6 @@ class VirtualHavruta:
             nodes.extend(neighbor_nodes)
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved graph neighbors: {nodes}.")
         return nodes
-    
-    def query_node_by_url(self, url: str,) -> str|None:
-        """Given a url, query the graph database for the node with that url.
-
-        If more than one node has the same url, return only one.
-
-        Parameters
-        ----------
-        url
-            of node
-
-        Returns
-        -------
-            unique id of the node
-        """
-        query_parameters = {"url": url}
-        query_string="""
-        MATCH (n)
-        WHERE n.`metadata.url`=$url
-        RETURN n.id
-        LIMIT 1
-        """
-        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
-            id, _, _ = driver.execute_query(
-            query_string,
-            parameters_=query_parameters,
-            database_=self.config["database"]["kg"] ["name"],)
-        if id:
-            return id[0].data()["n.id"]
-        else:
-            return None
 
     def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
         """Given a list of urls, query the graph database for the nodes with those urls.
@@ -557,7 +526,7 @@ class VirtualHavruta:
         """
         query_parameters = {"urls": urls}
         query_string="""
-        MATCH (n)
+        MATCH (n:Records)
         WHERE any(substring IN $urls WHERE n.url CONTAINS substring)
         RETURN n
         """
@@ -1459,7 +1428,7 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Using the following nodes to find corresponding chunks: {query_parameters}")
         query_string = """
         UNWIND $params AS param
-        MATCH (n)
+        MATCH (n:Chunk)
         WHERE n.versionTitle = param.versionTitle AND n.url = param.url
         RETURN n
         """
@@ -1494,7 +1463,7 @@ class VirtualHavruta:
         query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
         self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Using the following chunk to find a corresponding node: {query_parameters}")
         query_string="""
-        MATCH (n)
+        MATCH (n:Records)
         WHERE n.url=$url
         AND n.versionTitle=$versionTitle
         RETURN n
