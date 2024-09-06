@@ -1319,7 +1319,7 @@ class VirtualHavruta:
         sort_indices = np.argsort(final_ranking_score, axis=0)[::-1].reshape(-1)
         ranking_scores = np.sort(final_ranking_score, axis=0)[::-1].reshape(-1).tolist()
         sorted_chunks = [chunks[i] for i in sort_indices]
-        self.logger.info(f"MsgID={msg_id}. [RERANKING] sorted_chunks={sorted_chunks}, ranking_scores={ranking_scores}")
+        self.logger.info(f"MsgID={msg_id}. [RERANKING] sorted_chunks={[chunk.metadata['source'] for chunk in sorted_chunks]}, ranking_scores={ranking_scores}")
         return sorted_chunks, ranking_scores, total_token_count
 
     def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str, msg_id: str = '') -> np.array:
@@ -1483,5 +1483,5 @@ class VirtualHavruta:
             database_=self.config["database"]["kg"] ["name"],)
         assert len(nodes) == 1
         node = nodes[0]
-        self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Found chunk-corresponding node: {node}")
+        self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Found chunk-corresponding node for {query_parameters}")
         return convert_node_to_doc(node)
