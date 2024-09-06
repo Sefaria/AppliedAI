@@ -504,7 +504,7 @@ class VirtualHavruta:
                 parameters_=query_params,
                 database_=self.config["database"]["kg"]["name"],)
             nodes.extend(neighbor_nodes)
-        self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved graph neighbors: {nodes}.")
+        self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved {len(nodes)} graph neighbors.")
         return nodes
 
     def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
@@ -1453,7 +1453,7 @@ class VirtualHavruta:
                 sleep(1)
                 vector_records_batch = self.neo4j_vector.query(query_string, params={"params": query_parameters[i:i+batch_size]})
             vector_records += vector_records_batch
-        self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Found node-corresponding chunks: {vector_records}")
+        self.logger.info(f"MsgID={msg_id}. [NODE2CHUNK] Found {len(vector_records)} node-corresponding chunks")
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
     def get_node_corresponding_to_chunk(self, chunk: Document, msg_id: str = '') -> Document:
