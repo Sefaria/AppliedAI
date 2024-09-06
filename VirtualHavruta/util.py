@@ -239,18 +239,21 @@ def construct_db_filter(matched_filters: dict) -> dict:
 
     Example:
     If matched_filters is {'authorNames': ['Rashi']}, the function will return:
-    {"authorNames": {"$in": ['Rashi']}}
+    {"authorNames": {"$eq": 'Rashi'}}
     
     If matched_filters is {'primaryDocCategory': ['String A', 'String B'], 'authorNames': ['String C']}, 
     the function will return:
     {"$or": [{"primaryDocCategory": {"$in": ['String A', 'String B']}}, 
-             {"authorNames": {"$in": ['String C']}}]}
+             {"authorNames": {"$eq": 'String C'}}]}
     """
     
     # Create filter conditions for each field
     filter_conditions = []
     for k, v in matched_filters.items():
-        filter_conditions.append({k: {"$in": v}})
+        if len(v) == 1:
+            filter_conditions.append({k: {"$eq": v[0]}})
+        else:
+            filter_conditions.append({k: {"$in": v}})
     
     # If there are multiple conditions, use the $or operator
     if len(filter_conditions) > 1:
