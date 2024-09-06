@@ -561,7 +561,11 @@ class VirtualHavruta:
         try:
             # Construct reference data string        
             conc_ref_data = ''
-            for n, (d, _) in enumerate(retrieval_res):
+            for n, res in enumerate(retrieval_res):
+                if isinstance(res, tuple):
+                    d, _ = res
+                else:
+                    d = res
                 # Concatenate reference data and its source
                 numbered_ref_data = f'#{n}# {d.page_content}... --Origin of this {d.metadata["source"]} '
                 conc_ref_data += numbered_ref_data
@@ -1194,6 +1198,8 @@ class VirtualHavruta:
         else:
             raise ValueError(f"MsgID={msg_id}. [GRAPH TRAVERSAL] One of linker results or semantic search results need to be provided.")
         # rank seed chunks
+        seed_chunks, token_count = self.select_reference(enriched_query, seed_chunks, msg_id=msg_id)
+        total_token_count += token_count
         candidate_chunks, candidate_rankings, token_count = self.rank_documents(
             seed_chunks,
             enriched_query=enriched_query,
@@ -1227,6 +1233,8 @@ class VirtualHavruta:
             candidate_chunks += self.get_chunks_corresponding_to_nodes(neighbor_nodes, msg_id=msg_id)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
+            candidate_chunks, token_count = self.select_reference(enriched_query, candidate_chunks, msg_id=msg_id)
+            total_token_count += token_count
             candidate_chunks, candidate_rankings,  token_count = self.rank_documents(
                 candidate_chunks,
                 enriched_query=enriched_query,
