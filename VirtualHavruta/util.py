@@ -97,7 +97,7 @@ def get_node_data(node: "Node") -> dict:
         record: dict = next(iter(record.values()))
     return record
 
-def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/") -> Document:
+def convert_node_to_doc(node: "Node") -> Document:
     """
     Convert a node from the graph database to a Document object.
 
@@ -109,10 +109,6 @@ def convert_node_to_doc(node: "Node", base_url: str= "https://www.sefaria.org/")
     """
     node_data: dict = get_node_data(node)
     metadata = {k:v for k, v in node_data.items() if not k.startswith("content")}
-    new_reference_part = metadata["url"].replace(base_url, "")
-    new_category = metadata["primaryDocCategory"]
-    metadata["source"] = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {metadata['url']}"
-
     page_content = dict_to_yaml_str(node_data.get("content")) if isinstance(node_data.get("content"), dict) else node_data.get("content", "")
     return ChunkDocument(
         page_content=page_content,

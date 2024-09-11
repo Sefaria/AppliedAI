@@ -414,7 +414,7 @@ class VirtualHavruta:
                 url_to_node[url] = node
             else:
                 url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
-        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Graph nodes retrieved using linker URLs: {url_to_node}")
+        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Graph nodes retrieved using linker URLs: {['URL='+url+' SOURCE='+node.metadata["source"] for url, node in url_to_node.items()]}")
         return list(url_to_node.values())
     
     def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple[Document, float]]:
@@ -527,7 +527,7 @@ class VirtualHavruta:
         query_parameters = {"urls": urls}
         query_string="""
         MATCH (n:Records)
-        WHERE any(substring IN $urls WHERE n.url CONTAINS substring)
+        WHERE any(substring IN $urls WHERE n.url = substring)
         RETURN n
         """
         with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
@@ -1232,7 +1232,8 @@ class VirtualHavruta:
                 score_central_node=6.0,
                 msg_id=msg_id
             )
-            neighbor_nodes = [node for node, _ in neighbor_nodes_scores]
+            # Limit the amount of neighbors to top 15
+            neighbor_nodes = [node for node, _ in neighbor_nodes_scores][:15]
             candidate_chunks = self.get_chunks_corresponding_to_nodes(neighbor_nodes, msg_id=msg_id)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
