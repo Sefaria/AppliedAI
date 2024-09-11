@@ -1209,21 +1209,26 @@ class VirtualHavruta:
         total_token_count += token_count
 
         n_accepted_chunks = 0
+        n_iter = 0 
         seed_iteration = True
         while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:          
-            top_chunk = candidate_chunks.pop(0) # Get the top chunk
+            if len(candidate_chunks) == 0:
+                break
+            # Get the top chunk
+            top_chunk = candidate_chunks.pop(0) 
             if not seed_iteration:
                 collected_chunks.append(top_chunk)
                 local_top_score = candidate_rankings.pop(0)
                 ranking_scores_collected_chunks.append(local_top_score)
                 n_accepted_chunks += 1
-            seed_iteration = False  
             # avoid final loop execution which does not add a chunk to collected_chunks anyways
             if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
                 break
-            # neighbor_nodes = []
+            else:
+                n_iter +=1
+            self.logger.info(f"MsgID={msg_id}. [GRAPH TRAVERSAL] Graph traversal iteration {n_iter} starts.")
+            # Get the top node and neighbor nodes
             top_node = self.get_node_corresponding_to_chunk(top_chunk, msg_id=msg_id)
-            # neighbor_nodes.append(top_node)
             neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
                 url=top_node.metadata["url"],
                 direction=self.config["database"]["kg"]["direction"],
@@ -1234,6 +1239,8 @@ class VirtualHavruta:
             )
             # Limit the amount of neighbors to top 15
             neighbor_nodes = [node for node, _ in neighbor_nodes_scores][:15]
+            if not neighbor_nodes: 
+                break
             candidate_chunks = self.get_chunks_corresponding_to_nodes(neighbor_nodes, msg_id=msg_id)
             # avoid re-adding the top chunk
             candidate_chunks = [chunk for chunk in candidate_chunks if chunk not in collected_chunks]
@@ -1246,11 +1253,7 @@ class VirtualHavruta:
                 msg_id=msg_id
             )
             total_token_count += token_count
-            if len(candidate_chunks) > self.config["database"]["kg"]["max_depth"]:
-                candidate_chunks = candidate_chunks[:self.config["database"]["kg"]["max_depth"]]
-                candidate_rankings = candidate_rankings[:self.config["database"]["kg"]["max_depth"]]
-            elif len(candidate_chunks) == 0:
-                break
+            seed_iteration = False
         retrieval_res_kg = sorted(zip(collected_chunks, ranking_scores_collected_chunks), key=lambda pair: pair[1], reverse=True)
 
         return retrieval_res_kg,  total_token_count
