@@ -1103,15 +1103,11 @@ class VirtualHavruta:
 
         def find_topic_slugs(topic_names, all_topics):
             slugs = []
-            for name in topic_names:
-                found = False
-                for topic in all_topics:
-                    for title in topic['titles']:
-                        if title['text'].lower() == name.lower():
-                            slugs.append(topic['slug'])
-                            found = True
-                            break
-                    if found:
+            name_set = {name.lower() for name in topic_names}
+            for topic in all_topics:
+                for title in topic.get('titles', []):
+                    if title.get('text', '').lower() in name_set:
+                        slugs.append(topic.get('slug', ''))
                         break
             self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Found topic slugs: {slugs}")
             return slugs
