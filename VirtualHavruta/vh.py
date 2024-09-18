@@ -1062,7 +1062,7 @@ class VirtualHavruta:
 
         return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
         
-    def topic_ontology(self, extraction: str = '', msgid: str = ''):
+    def topic_ontology(self, extraction: str = '', msgid: str = '', slugs_mode: bool = False):
         self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Starting topic ontology process.")
         cache_file = 'all_topics.json'
         
@@ -1137,18 +1137,21 @@ class VirtualHavruta:
         # Find slugs for the topic names
         topic_slugs = find_topic_slugs(topic_names, all_topics)
 
-        # Get descriptions for the topic slugs
-        descriptions = get_topic_descriptions(topic_slugs)
+        if slugs_mode:
+            return topic_slugs
+        else:        
+            # Get descriptions for the topic slugs
+            descriptions = get_topic_descriptions(topic_slugs)
 
-        # Create a dictionary with topic names as keys and their descriptions as values
-        final_descriptions = {}
-        for slug, description in descriptions.items():
-            desc = description.strip()
-            if desc:
-                final_descriptions[slug] = desc
+            # Create a dictionary with topic names as keys and their descriptions as values
+            final_descriptions = {}
+            for slug, description in descriptions.items():
+                desc = description.strip()
+                if desc:
+                    final_descriptions[slug] = desc
 
-        self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Final topic descriptions: {final_descriptions}")
-        return final_descriptions
+            self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Final topic descriptions: {final_descriptions}")
+            return final_descriptions
 
     def graph_traversal_retriever(self,
                                   screen_res: str,
