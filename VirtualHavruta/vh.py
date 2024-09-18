@@ -1087,7 +1087,7 @@ class VirtualHavruta:
 
         def fetch_and_cache_topics():
             try:
-                response = requests.get('https://www.sefaria.org/api/topics')
+                response = requests.get('https://www.sefaria.org/api/topics', headers={"accept": "application/json"})
                 if response.status_code == 200:
                     topics = response.json()
                     with open(cache_file, 'w') as file:
