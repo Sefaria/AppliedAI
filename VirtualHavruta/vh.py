@@ -1067,7 +1067,7 @@ class VirtualHavruta:
         cache_file = 'all_topics.json'
         
         def get_all_topics():
-            cache_expiry = timedelta(days=1)
+            cache_expiry = timedelta(days=0)
             topics = []  # Ensure topics is always initialized
 
             try:
@@ -1087,7 +1087,7 @@ class VirtualHavruta:
 
         def fetch_and_cache_topics():
             try:
-                response = requests.get('https://www.sefaria.org/api/topics', headers={"accept": "application/json"})
+                response = requests.get('https://www.sefaria.org/api/topics?limit=0', headers={"accept": "application/json"})
                 if response.status_code == 200:
                     topics = response.json()
                     with open(cache_file, 'w') as file:

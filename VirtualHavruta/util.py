@@ -210,7 +210,7 @@ def find_matched_filters(query: str, metadata_ranges: dict) -> dict:
             # Check if the string (one-word or multi-word) is found in the query
             if s and s.strip():
                 # Use regex to match whole words
-                pattern = r'\b' + re.escape(s.lower()) + r'\b'
+                pattern = r'(?<!\w)' + re.escape(s.lower()) + r'(?!\w)'
                 if re.search(pattern, matched_query):
                     matched_strings.append(s)
                     # Replace the matched portion with a placeholder to avoid overlapping matches
