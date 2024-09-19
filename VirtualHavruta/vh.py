@@ -1101,6 +1101,18 @@ class VirtualHavruta:
                 topics = []
             return topics
 
+        def preprocess_topic_names(extraction):
+            topic_names = extraction.split(",")
+            updated_topic_names = []
+            for topic in topic_names:
+                updated_name = topic.strip()
+                updated_topic_names.append(updated_name)
+                if updated_name.lower().startswith('rabbi'):
+                    alt_name = updated_name[6:].strip()
+                    if alt_name:
+                        updated_topic_names.append(alt_name)
+            return updated_topic_names
+                    
         def find_topic_slugs(topic_names, all_topics):
             slugs = []
             name_set = {name.lower() for name in topic_names}
@@ -1122,9 +1134,9 @@ class VirtualHavruta:
                         descriptions[slug] = topic_data['description']['en']
             self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Retrieved topic descriptions: {descriptions}")
             return descriptions
-
+        
         # Process the extraction string
-        topic_names = extraction.split(", ")
+        topic_names = preprocess_topic_names(extraction)
         self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Extracted topic names: {topic_names}")
 
         # Get all topics
