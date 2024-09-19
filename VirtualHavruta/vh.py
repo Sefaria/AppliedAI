@@ -1067,7 +1067,7 @@ class VirtualHavruta:
         cache_file = 'all_topics.json'
         
         def get_all_topics():
-            cache_expiry = timedelta(days=0)
+            cache_expiry = timedelta(days=1)
             topics = []  # Ensure topics is always initialized
 
             try:
