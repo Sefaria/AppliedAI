@@ -1107,7 +1107,7 @@ class VirtualHavruta:
             for topic in topic_names:
                 updated_name = topic.strip()
                 updated_topic_names.append(updated_name)
-                if updated_name.lower().startswith('rabbi'):
+                if updated_name.lower().startswith(('rabbi', 'rebbe')):
                     alt_name = updated_name[6:].strip()
                     if alt_name:
                         updated_topic_names.append(alt_name)
