@@ -176,6 +176,9 @@ class VirtualHavruta:
         Parameters:
         model (LanguageModel): The language model to be used for all chains.
         suffixes (list of str): A list of suffix identifiers that correspond to different tasks or configurations. These suffixes are used to form both the attribute names for the chains and to retrieve corresponding prompt templates from the class instance.
+
+        Example:
+            initialize_llm_chains(getattr(self, model_name), suffixes)
         '''
         for suffix in suffixes:
             setattr(self, f"chat_llm_chain_{suffix}",
@@ -195,6 +198,9 @@ class VirtualHavruta:
         
         Returns:
         LLMChain: An instance of a language model chain configured with the given language model and prompt template.
+
+        Example:
+        create_llm_chain(model, getattr(self, f"prompt_{suffix}")))
         '''
         return LLMChain(llm=llm, prompt=prompt_template, verbose=False)
 
@@ -218,6 +224,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exceptions that occur during the prediction process, including token expenditure.
+
+        Example:
+        make_prediction(self.chat_llm_chain_anti_attack, query, "ANTI-ATTACK", msg_id)
         '''
         with get_openai_callback() as cb:
             try: 
@@ -246,6 +255,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exception that occurs during response parsing, setting default values for the detection status and explanation.
+
+        Example:
+        detection, explanation, tok_count = vh.anti_attack(query, msgid)
         '''
         adv_res, tok_count = self.make_prediction(self.chat_llm_chain_anti_attack, query, "ANTI-ATTACK", msg_id)
         try:
@@ -270,6 +282,9 @@ class VirtualHavruta:
         
         Returns:
         tuple: A tuple containing the adapted text (str) and the token count (int) used in generating that adapted text.
+
+        Example:
+        screen_res, tok_count = vh.adaptor(query, msgid)
         '''
         adp_res, tok_count = self.make_prediction(self.chat_llm_chain_adaptor, query, "ADAPTATION", msg_id)
         return adp_res, tok_count
@@ -288,6 +303,9 @@ class VirtualHavruta:
         
         Returns:
         tuple: A tuple containing the edited text (str) and the token count (int) used in generating that edited text.
+
+        Example:
+        screen_res, tok_count = vh.editor(query, msgid)
         '''
         edit_res, tok_count = self.make_prediction(self.chat_llm_chain_editor, query, "EDITING", msg_id)
         return edit_res, tok_count
@@ -310,6 +328,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exception that occurs during the JSON parsing and sets all output components to empty strings as a fallback.
+
+        Example:
+        translation, extraction, elaboration, quotation, challenge, proposal, tok_count = vh.optimizer(screen_res, msgid)
         '''
         opt_res, tok_count = self.make_prediction(self.chat_llm_chain_optimization, query, "PROMPT OPTIMIZATION", msg_id)
         try:
@@ -343,6 +364,9 @@ class VirtualHavruta:
         
         Raises:
         ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
+
+        Example:
+        primary_retrieval_result = vh.retrieve_docs(query, msgid, 'primary')
         '''
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Simple semantic search at work. Retrieving {filter_mode} references using this query: {query}")
         # Convert primary_source_filter to a set for efficient lookup
@@ -374,6 +398,9 @@ class VirtualHavruta:
         
         Returns:
         list: A list of documents that meet the criteria of the specified metadata filter.
+
+        Example:
+        p_retrieval_res = vh.retrieve_docs_metadata_filtering(query, msgid, metadata_filter)
         '''
         self.logger.info(f"MsgID={msg_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {query} and this metadata filter {metadata_fiter}")
         # Convert primary_source_filter to a set for efficient lookup
@@ -384,26 +411,30 @@ class VirtualHavruta:
     
     def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
                                                url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
-        """Retrieve nodes corresponding to linker results.
+        '''
+        Retrieve nodes corresponding to linker results.
 
         Given linker results, find and return the corresponding nodes in the graph database.
-        There is a one-to-many relationship between linker result and graphs in the graph db.
+        There is a one-to-many relationship between a linker result and graphs in the graph db.
 
-        Parameters
-        ----------
-        linker_results
-            results from the linker api
-        msg_id, optional
-            for slack bot, by default ''
-        filter_mode, optional
+        Parameters:
+        linker_results : list
+            Results from the linker API.
+        msg_id : str, optional
+            Identifier for Slack bot messages, by default ''.
+        filter_mode : str, optional
             Mode for filtering search results; valid options are 'primary' or 'secondary'. Defaults to 'primary'.
-        url_prefix, optional
-            add domain if missing, by default "https://www.sefaria.org/"
+        url_prefix : str, optional
+            Adds domain if missing, by default "https://www.sefaria.org/".
 
-        Returns
-        -------
-           list of documents
-        """
+        Returns:
+        list
+            A list of documents matching the linker results.
+
+        Example:
+        retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
+        '''
+
         urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
                                     for linker_res in linker_results})
         self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Retrieving graph nodes using linker URLs: {urls_linker_results}")
@@ -418,27 +449,38 @@ class VirtualHavruta:
         return list(url_to_node.values())
     
     def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple[Document, float]]:
-        """Given a url, query the graph database for the neighbors of the node with that url.
+        '''
+        Given a URL, query the graph database for the neighbors of the node with that URL.
 
-        Score the neighbors based upon their distance to the central node.
-        Parameters
-        ----------
-        url
-            of central node
-        direction
-           The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
-            'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
-        order
-            order of neighbors (=number of hops) to include, between 1 and n
-        score_central_node
-            score of the central node, by default 6.0
-        filter_mode_nodes
-            Mode for filtering search results, if provided; valid options are 'primary' or 'secondary'. None for no filter.
+        Scores the neighbors based on their distance to the central node.
 
-        Returns
-        -------
-            list of (document, score)
-        """
+        Parameters:
+        url : str
+            The URL of the central node.
+        direction : str
+            The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
+            'incoming' searches for newer references, 'outgoing' for older references, and 'both_ways' for both.
+        order : int
+            Order of neighbors (number of hops) to include, between 1 and n.
+        score_central_node : float, optional
+            Score of the central node, by default 6.0.
+        filter_mode_nodes : str, optional
+            Mode for filtering search results, if provided; valid options are 'primary' or 'secondary'. Defaults to None for no filter.
+
+        Returns:
+        list
+            A list of tuples, each containing a document and its score.
+
+        Example:
+        get_retrieval_results_knowledge_graph(
+            url=top_node.metadata["url"],
+            direction=self.config["database"]["kg"]["direction"],
+            order=self.config["database"]["kg"]["order"],
+            filter_mode_nodes=filter_mode_nodes,
+            score_central_node=6.0,
+            msg_id=msg_id
+        )
+        '''
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Starting get_retrieval_results_knowledge_graph.")
         nodes_distances = self.get_graph_neighbors_by_url(url, direction, order, filter_mode_nodes=filter_mode_nodes, msg_id=msg_id)
         nodes = [node for node, _ in nodes_distances]
@@ -448,39 +490,56 @@ class VirtualHavruta:
         return list(zip(docs, scores, strict=True))
 
     def score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float:
-        """Score a document by the number of hops from the central node.
+        '''
+        Score a document by the number of hops from the central node.
 
-        Parameters
-        ----------
-        n_hops
-            number of hops from the central node
-        start_score
-            score of the central node
-        score_decrease_per_hop
-            decrease of score per hop
-        Returns
-        -------
-            score
-        """
+        Parameters:
+        n_hops : int
+            Number of hops from the central node.
+        start_score : float
+            Score of the central node.
+        score_decrease_per_hop : float
+            Decrease of score per hop.
+
+        Returns:
+        float
+            The calculated score.
+
+        Example:
+        scores = [self.score_document_by_graph_distance(
+            distance, 
+            start_score=score_central_node, 
+            score_decrease_per_hop=0.1
+        ) for distance in distances]
+        '''
         return max(start_score - n_hops * score_decrease_per_hop, 0.0)
 
     def get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple["Node", int]]:
-        """Given a url, query the graph database for the neighbors of the node with that url.
+        '''
+        Given a URL, query the graph database for the neighbors of the node with that URL.
 
-        Parameters
-        ----------
-        url
-            of central node
-        relationship
+        Parameters:
+        url : str
+            The URL of the central node.
+        relationship : str
             The direction of the edges between nodes, one of 'incoming', 'outgoing', 'both_ways'. In the Sefaria KG, edges point from newer to older references.
-            'incoming' leads to searching for newer references, 'outgoing' for older references, and 'both_ways' for both.
-        depth
-            degree of neighbors to include, between 1 and n
+            'incoming' searches for newer references, 'outgoing' for older references, and 'both_ways' for both.
+        depth : int
+            Degree of neighbors to include, between 1 and n.
 
-        Returns
-        -------
-            list of (node, distance) tuples, where distance is the number of hops from the central node
-        """
+        Returns:
+        list
+            A list of (node, distance) tuples, where distance is the number of hops from the central node.
+
+        Example:
+        get_graph_neighbors_by_url(
+            url, 
+            direction, 
+            order, 
+            filter_mode_nodes=filter_mode_nodes, 
+            msg_id=msg_id
+        )
+        '''
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieving graph neighbors for url: {url}.")
         assert relationship in ["incoming", "outgoing", "both_ways"]
         start_node_operator: str = "<-" if relationship == "incoming" else "-"
@@ -508,22 +567,25 @@ class VirtualHavruta:
         return nodes
 
     def query_graph_db_by_url(self, urls: list[str]) -> list[Document]:
-        """Given a list of urls, query the graph database for the nodes with those urls.
+        '''
+        Given a list of URLs, query the graph database for the nodes with those URLs.
 
-        Note that there is a one-to-many relationship between urls and documents in the vector database,
-        due to different sources for the same url.
+        Note that there is a one-to-many relationship between URLs and documents in the vector database,
+        due to different sources for the same URL.
 
-        Return the nodes as document compatible type.
+        Returns the nodes in a document-compatible type.
 
-        Parameters
-        ----------
-        urls
-            of documents
+        Parameters:
+        urls : list
+            A list of URLs of the documents.
 
-        Returns
-        -------
-            list of documents
-        """
+        Returns:
+        list
+            A list of documents.
+
+        Example:
+        nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
+        '''
         query_parameters = {"urls": urls}
         query_string="""
         MATCH (n:Records)
@@ -556,6 +618,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [] and 0.
+
+        Example:
+        seed_chunks, token_count = self.select_reference(enriched_query, seed_chunks, msg_id=msg_id)
         '''
         
         try:
@@ -600,6 +665,15 @@ class VirtualHavruta:
         
         Notes:
         The function is robust to variations in data and manages complex scenarios where multiple references may have the same URL but different content or sources. It effectively manages and logs all operations to ensure data integrity and traceability.
+
+        Example:
+                p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, tok_count = vh.sort_reference(
+                scripture_query=scripture_query,
+                enriched_query=enriched_query,
+                retrieval_res=sel_p_retrieval_res,
+                msg_id=msgid,
+                filter_mode=primary_filter_mode
+            )
         '''
         total_tokens = 0
 
@@ -618,23 +692,26 @@ class VirtualHavruta:
         return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
 
     def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str = '') -> tuple[dict, dict, dict]:
-        """Merge chunks with the same url.
+        '''
+        Merge chunks with the same URL.
 
         This can occur for two reasons:
         1. Different graph nodes with the same URL.
         2. The same graph node split into multiple chunks.
 
-        Parameters
-        ----------
-        retrieval_res
-            list of document, ranking_score tuples
-        msg_id, optional
-            slack msg id, by default ""
+        Parameters:
+        retrieval_res : list
+            A list of (document, ranking_score) tuples.
+        msg_id : str, optional
+            Slack message ID, by default "".
 
-        Returns
-        -------
-            A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary.
-        """
+        Returns:
+        tuple
+            A tuple containing sorted source relevance dictionary, source data dictionary, and source reference dictionary.
+
+        Example:
+        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
+        '''
         src_data_dict = {}
         src_ref_dict = {}
         src_rel_dict = {}
@@ -688,6 +765,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [].
+
+        Example:
+        selected_idx, tok_count = self.selector(query, conc_ref_data, msg_id)
         '''
         
         response, tok_count = self.make_prediction(
@@ -725,6 +805,9 @@ class VirtualHavruta:
         
         Raises:
         Exception: Catches and logs any exception that occurs during the classification conversion process, defaulting the result to 0.
+
+        Example:
+        ref_class, token_count = self.classification(query=query, ref_data=ref_data, msg_id=msg_id)
         '''
         # Classifiy the data with LLM
         ref_class, tok_count = self.make_prediction(
@@ -757,6 +840,9 @@ class VirtualHavruta:
         
         Notes:
         The function logs details of the reference processing for tracking and debugging, enhancing traceability and accountability in system operations involving reference data management.
+
+        Example:
+        example = vh.generate_ref_str(p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, msgid, 'primary')
         '''
         # Determine the starting citation number and how many citations to include
         n_citation_base = 0 if ref_mode == 'primary' else n_citation_base
@@ -812,6 +898,9 @@ class VirtualHavruta:
         
         Notes:
         The function is currently set to handle exactly three links due to dashboard limitations. This behavior is noted as a potential area for future adjustments.
+
+        Example:
+        neo4j_deeplink = vh.generate_kg_deeplink(deeplinks, msgid)
         '''
         # Define the maximum number of deeplinks to be used
         max_deeplinks_count = 3
@@ -855,6 +944,9 @@ class VirtualHavruta:
         
         Returns:
         tuple: A tuple containing the model's response (str) and the token count (int) used in generating that response.
+
+        Example:
+        response, tok_count = vh.qa(query, ref_data, msgid)
         '''
         response, tok_count = self.make_prediction(
                     self.chat_llm_chain_qa, query, "qa", msg_id, ref_data)
@@ -905,6 +997,9 @@ class VirtualHavruta:
         
         Raises:
         HTTPError: If an HTTP error occurs during the API request, an HTTPError exception is raised and logged.
+
+        Example:
+        result = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query, msg_id=msg_id)
         '''
         # Sefaria Linker API endpoint
         api_url = "https://www.sefaria.org/api/find-refs"
@@ -956,6 +1051,9 @@ class VirtualHavruta:
         
         Raises:
         ValueError: If the provided filter_mode is not recognized, an error is raised indicating an invalid filter mode.
+
+        Example:
+        primary_results_linker = vh.retrieve_docs_linker(screen_res, enriched_query , msgid, 'primary')
         '''
         # Making a call to sefaria linker api
         json_input = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query, msg_id=msg_id)
@@ -1014,6 +1112,9 @@ class VirtualHavruta:
         Returns:
             tuple: Updated dictionaries (p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict) after merging new references.
             If merging is not succesful, original value is returned.
+
+        Example:
+        p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict = vh.merge_linker_refs(retrieved_docs, p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, msgid)
         """
 
         #iterating each document in reverse order
@@ -1063,6 +1164,30 @@ class VirtualHavruta:
         return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
         
     def topic_ontology(self, extraction: str = '', msgid: str = '', slugs_mode: bool = False):
+        '''
+        Processes and retrieves topic ontology data, either from a cache or by fetching new data if the cache is expired.
+
+        This function checks for a cached file of all topics, loads it if it is still valid, or fetches and caches the data if the cache has expired.
+        It also processes the extraction string to get topic names, retrieves corresponding topic slugs, and optionally fetches topic descriptions.
+        The function ensures efficient access through caching and offers the option to return either slugs or descriptions for the topics.
+
+        Parameters:
+        extraction : str, optional
+            A comma-separated string of topic names to process and search for, by default ''.
+        msgid : str, optional
+            Identifier for logging purposes, by default ''.
+        slugs_mode : bool, optional
+            Flag to determine if the function should return slugs instead of descriptions, by default False.
+
+        Returns:
+        list or dict
+            If slugs_mode is True, returns a list of topic slugs.
+            Otherwise, returns a dictionary with slugs as keys and topic descriptions as values.
+
+        Example:
+        topic_ont_dict = vh.topic_ontology(expanded_extraction, msgid)
+        '''
+
         self.logger.info(f"MsgID={msgid}. [ONTOLOGY] Starting topic ontology process.")
         cache_file = 'all_topics.json'
         
@@ -1169,31 +1294,42 @@ class VirtualHavruta:
                                   linker_results: list[dict]|None = None,
                                   semantic_search_results: list[tuple[Document, float]]|None = None,
                                   msg_id: str = ''):
-        """Find seed chunks based upon linker results or semantic similarity, then traverse the graph to find related chunks in the local neighborhood.
+        '''
+        Find seed chunks based on linker results or semantic similarity, then traverse the graph to find related chunks in the local neighborhood.
 
-        Details: https://wwwmatthes.in.tum.de/pages/3bd5tm02lihx/Master-s-Thesis-Philippe-Saad, Thesis p. 28f.
+        This function first identifies seed chunks using linker results or semantic search, and then traverses the graph to find related chunks within the neighborhood. Results are ranked based on relevance.
 
-        Parameters
-        ----------
-        screen_res
+        Parameters:
+        screen_res : dict
             The screen_res query, which is used as part of the query to the Sefaria Linker.
-        scripture_query
-            query used to retrieve documents from the vector database
-        enriched_query
-            query enriched with additional context
-        filter_mode_nodes
-            for 'primary' or 'secondary' references, optional
-        linker_results
-            results from the linker
-        semantic_search_results
-            results from semantic search
-        msg_id, optional
-           identifier for slack message, by default ''
+        scripture_query : str
+            The query used to retrieve documents from the vector database.
+        enriched_query : str
+            The query enriched with additional context.
+        filter_mode_nodes : str, optional
+            Filter mode for 'primary' or 'secondary' references, optional.
+        linker_results : list
+            The results from the Sefaria Linker.
+        semantic_search_results : list
+            The results from the semantic search.
+        msg_id : str, optional
+            Identifier for logging purposes, by default ''.
 
-        Returns
-        -------
-            list of sorted chunks, sorted by relevance in descending order
-        """
+        Returns:
+        list
+            A list of sorted chunks, ranked by relevance in descending order.
+
+        Example:
+        sel_p_retrieval_res, tok_count = vh.graph_traversal_retriever(
+            screen_res=screen_res,
+            scripture_query=scripture_query,
+            enriched_query=enriched_query,
+            linker_results=retrieval_res_linker,
+            filter_mode_nodes=None,
+            msg_id=msgid
+        )
+        '''
+
         # get seed chunks
         self.logger.info(f"MsgID={msg_id}. [GRAPH TRAVERSAL] Starting graph_traversal_retriever.")
         total_token_count = 0
@@ -1271,24 +1407,28 @@ class VirtualHavruta:
 
     def get_linker_seed_chunks(self, linker_results: list[dict],
                         filter_mode: str="primary", msg_id: str = '') -> list[Document]:
-        """Given linker results, get the corresponding seed chunks.
+        '''
+        Given linker results, get the corresponding seed chunks.
 
-        First retrieve the seed nodes: linker results.
-        Find the chunks corresponding to the seed nodes. (1-to-many between nodes and chunks)
+        This function first retrieves the seed nodes based on the linker results, and then finds the chunks corresponding to those seed nodes. 
+        There is a one-to-many relationship between nodes and chunks.
 
-        Parameters
-        ----------
-        linker_results
-            results from linker api
-        scripture_query
-            scripture query
-        msg_id
-            message id for slack, optional
+        Parameters:
+        linker_results : list
+            Results from the linker API.
+        scripture_query : str
+            The scripture query to retrieve corresponding documents.
+        msg_id : str, optional
+            Message ID for logging purposes, particularly for Slack, by default ''.
 
-        Returns
-        -------
-            list of seed chunks
-        """
+        Returns:
+        list
+            A list of seed chunks.
+
+        Example:
+        seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
+        '''
+
         self.logger.info(f"MsgID={msg_id}. [LINKER SEED CHUNKS] Starting get_linker_seed_chunks for KG search.")
         seeds: list[Document] = self.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
         seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds, msg_id=msg_id)
@@ -1296,28 +1436,39 @@ class VirtualHavruta:
 
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
                               filter_mode: str|None = None, msg_id: str = '') -> tuple[list[Document], list[float], int]:
-        """Rank the document candidates in descending order based on their relevance to the query.
+        '''
+        Rank the document candidates in descending order based on their relevance to the query.
 
-        Return a new list, do not modify the input list.
+        This function ranks the provided chunks (documents) based on their relevance to the query and returns a new list without modifying the input list.
 
-        Parameters
-        ----------
-        chunks
-            langchain documents
-        enriched_query
-            query enriched with additional context
-        scripture_query
-            query used to retrieve documents from the vector database
-        semantic_similarity_scores
-            optional, provide if available to save some computational costs
-        filter_mode
-            for 'primary' or 'secondary' references. Set the mode if all documents are of the same type, set to None for mixed types.
-            If the filter mode is set to secondary, no page rank scores are computed.
+        Parameters:
+        chunks : list
+            Langchain documents.
+        enriched_query : str
+            The query enriched with additional context.
+        scripture_query : str
+            The query used to retrieve documents from the vector database.
+        semantic_similarity_scores : list, optional
+            Pre-computed semantic similarity scores to save computational costs, if available.
+        filter_mode : str, optional
+            Specifies whether the references are 'primary' or 'secondary'. Set the mode if all documents are of the same type; set to None for mixed types.
+            If set to 'secondary', no page rank scores are computed.
 
-        Returns
-        -------
-            ranked chunks, rating_scores, total_token_count
-        """
+        Returns:
+        tuple
+            A tuple containing ranked chunks, ranking scores, and the total token count.
+
+        Example:
+        sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(
+            documents=chunks,
+            enriched_query=enriched_query,
+            scripture_query=scripture_query,
+            semantic_similarity_scores=semantic_similarity_scores,
+            filter_mode=filter_mode,
+            msg_id=msg_id
+        )
+        '''
+
         self.logger.info(f"MsgID={msg_id}. [RERANKING] Starting reranking chunks.")
         total_token_count = 0
         if not semantic_similarity_scores:
@@ -1341,19 +1492,29 @@ class VirtualHavruta:
         return sorted_chunks, ranking_scores, total_token_count
 
     def compute_semantic_similarity_documents_query(self, documents: list[Document], query: str, msg_id: str = '') -> np.array:
-        """Compute the semantic similarity between a document and a query.
+        '''
+        Compute the semantic similarity between a document and a query.
 
-        Parameters
-        ----------
-        documents
-            langchain documents
-        query
-            query string
+        This function calculates the semantic similarity score between the provided documents and the query.
 
-        Returns
-        -------
-            similarity score
-        """
+        Parameters:
+        documents : list
+            Langchain documents to compare.
+        query : str
+            The query string against which the documents will be compared.
+
+        Returns:
+        float
+            The similarity score between the documents and the query.
+
+        Example:
+        semantic_similarity_scores = self.compute_semantic_similarity_documents_query(
+            chunks=documents, 
+            query=enriched_query, 
+            msg_id=msg_id
+        )
+        '''
+
         query_embedding = np.array(self.neo4j_vector.embedding.embed_query(text=query)).reshape(1, -1)
         document_embeddings = np.array([doc.metadata["embedding"] for doc in documents])
         if self.neo4j_vector._distance_strategy.value.lower() == "cosine":
@@ -1364,21 +1525,32 @@ class VirtualHavruta:
             raise NotImplementedError(f"MsgID={msg_id}. Distance strategy {self.neo4j_vector._distance_strategy.value} not implemented.")
 
     def get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str, msg_id: str = '') -> np.array:
-        """Get the reference class for each document based on the query.
+        '''
+        Get the reference class for each document based on the query.
 
-        Parameters
-        ----------
-        documents
-            langchain documents
-        scripture_query
-            query string
-        enriched_query
-            query enriched with additional context
+        This function determines the reference class for each document by analyzing how well they match the scripture and enriched queries.
 
-        Returns
-        -------
-            array of reference classes
-        """
+        Parameters:
+        documents : list
+            Langchain documents to classify.
+        scripture_query : str
+            The query string used for retrieving documents from the vector database.
+        enriched_query : str
+            The query enriched with additional context.
+
+        Returns:
+        list
+            An array of reference classes corresponding to each document.
+
+        Example:
+        reference_classes, token_count = self.get_reference_class(
+            chunks=documents, 
+            scripture_query=scripture_query, 
+            enriched_query=enriched_query, 
+            msg_id=msg_id
+        )
+        '''
+
         reference_classes = []
         total_token_count = 0
         for doc in documents:
@@ -1390,18 +1562,27 @@ class VirtualHavruta:
         return np.array(reference_classes).reshape(-1, 1), total_token_count
 
     def get_page_rank_scores(self, documents: list[Document], msg_id: str = '') -> np.array:
-        """Get the PageRank scores for each document.
+        '''
+        Get the PageRank scores for each document.
 
-        Perform batch-wise min-max scaling.
+        This function retrieves the PageRank scores for the provided documents from their metadata, and performs batch-wise min-max scaling to normalize the scores.
 
-        Parameters
-        ----------
-        documents
-            langchain document type
-        Returns
-        -------
-            array of page rank scores
-        """
+        Parameters:
+        documents : list
+            Langchain documents for which to compute PageRank scores.
+        msg_id : str, optional
+            Message ID for logging purposes, by default ''.
+
+        Returns:
+        np.array
+            An array of scaled PageRank scores.
+
+        Example:
+        page_rank_scores = self.get_page_rank_scores(
+            chunks=documents, 
+            msg_id=msg_id
+        )
+        '''
         page_rank_scores_raw = []
         for doc in documents:
             page_rank_score = doc.metadata["pagerank"]
@@ -1413,37 +1594,51 @@ class VirtualHavruta:
         return np.array(page_rank_scores_scaled).reshape(-1, 1)
 
     def is_primary_document(self, doc: Document) -> bool:
-        """Check if a document is a primary document.
+        '''
+        Check if a document is a primary document.
 
-        Parameters
-        ----------
-        doc
-            langchain document
+        This function checks if the given document is considered a primary document by matching its source metadata against a predefined list of primary sources.
 
-        Returns
-        -------
-            bool
-        """
+        Parameters:
+        doc : Document
+            The Langchain document to be checked.
+
+        Returns:
+        bool
+            True if the document is a primary document, False otherwise.
+
+        Example:
+        self.is_primary_document(doc)
+        '''
         return any(s in doc.metadata['source'] for s in self.primary_source_filter)
 
     def get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int|None = None, unique_url: bool = True, msg_id: str = '') -> list[Document]:
-        """Given a list of nodes, return the chunks corresponding to that node.
+        '''
+        Given a list of nodes, return the chunks corresponding to each node.
 
-        Parameters
-        ----------
-        node
-            id of the node
-        batch_size
-            number of documents to retrieve per query, avoid memory issues
-        max_nodes
-            maximal number of nodes to go through
-        unique_url
-            whether nodes should be firstly filtered such that each has a unique url
+        This function retrieves the chunks that correspond to a given list of nodes, with options to limit the number of nodes and batch size to avoid memory issues, and to ensure each node has a unique URL.
 
-        Returns
-        -------
-            id of the chunks corresponding to the node
-        """
+        Parameters:
+        node : list
+            The IDs of the nodes to retrieve corresponding chunks for.
+        batch_size : int
+            The number of documents to retrieve per query to avoid memory issues.
+        max_nodes : int
+            The maximum number of nodes to process.
+        unique_url : bool
+            Flag to determine whether to filter nodes such that each has a unique URL.
+
+        Returns:
+        list
+            The IDs of the chunks corresponding to the nodes.
+
+        Example:
+        seed_chunks = self.get_chunks_corresponding_to_nodes(
+            seed_chunks_vector_db, 
+            msg_id=msg_id
+        )
+        '''
+
         if unique_url:
             seen_urls = set()
             nodes = [node for node in nodes if node.metadata["url"] not in seen_urls and not seen_urls.add(node.metadata["url"])]
@@ -1475,17 +1670,25 @@ class VirtualHavruta:
         return [convert_vector_db_record_to_doc(record) for record in vector_records]
 
     def get_node_corresponding_to_chunk(self, chunk: Document, msg_id: str = '') -> Document:
-        """Given a chunk, return the node corresponding to that chunk.
+        '''
+        Given a chunk, return the node corresponding to that chunk.
 
-        Parameters
-        ----------
-        chunk
-            document representing the chunk
+        This function retrieves the node that corresponds to a given chunk, represented as a document.
 
-        Returns
-        -------
-            document representing the node
-        """
+        Parameters:
+        chunk : Document
+            The document representing the chunk.
+
+        Returns:
+        Document
+            The document representing the node corresponding to the chunk.
+
+        Example:
+        node = self.get_node_corresponding_to_chunk(
+            chunk=chunk, 
+            msg_id=msg_id
+        )
+        '''
         query_parameters = {"url": chunk.metadata["url"], "versionTitle": chunk.metadata["versionTitle"]}
         self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Using the following chunk to find a corresponding node: {query_parameters}")
         query_string="""
