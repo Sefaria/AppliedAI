@@ -116,7 +116,7 @@ This document outlines the core functions used in the `VirtualHavruta` class. Th
 |---------------|---------|------------------|--------|
 | `graph_traversal_retriever(self, screen_res: str, scripture_query: str, enriched_query: str, filter_mode_nodes: str | None = None, linker_results: list[dict] | None = None, semantic_search_results: list[tuple[Document, float]] | None = None, msg_id: str = '')` | Retrieves related chunks by traversing the graph starting from seed chunks. | - `screen_res: str`: Screen result query<br>- `scripture_query: str`: Scripture query<br>- `enriched_query: str`: Enriched query<br>- `filter_mode_nodes: str | None = None`: Node filter mode<br>- `linker_results: list[dict] | None = None`: Linker results<br>- `semantic_search_results: list[tuple[Document, float]] | None = None`: Semantic search results<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(retrieval_res_kg: list[tuple[Document, float]], total_token_count: int)` |
 
-##Configuration Guide for config.yaml
+## Configuration Guide for config.yaml
 
 This guide explains how to modify the config.yaml file for the Virtual Havruta project. The configuration file controls the environment, database connections, Slack integration, model API setups, and various other settings.
 
