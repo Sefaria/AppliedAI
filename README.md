@@ -12,6 +12,109 @@ The primary goal of Virtual Havruta is to offer trustworthy and factually correc
 Virtual Havruta integrates advanced retrieval-augmented generation models to analyze and respond to user queries. By delving into a vast repository of religious texts and interpretations, it provides nuanced perspectives on various Judaic topics. This approach ensures that users receive not just answers, but also contextually rich and theologically sound insights.
 ## Usage and Applications
 The application of Virtual Havruta is vast, ranging from individual study sessions to group discussions and academic research. Its ability to provide diverse viewpoints and references makes it an invaluable tool for anyone seeking to explore the depths of Judaism's rich textual tradition.
+## Virtual Havruta - Functions Overview
+
+This document outlines the core functions used in the `VirtualHavruta` class. The functions are grouped by their purpose, detailing the inputs, outputs, and their role within the system.
+
+---
+
+### Initialization and Setup Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `__init__(self, prompts_file: str, config_file: str, logger)` | Initializes the instance with prompts, configurations, and reference information from YAML files. | - `prompts_file: str`: Path to prompts YAML file<br>- `config_file: str`: Path to configuration YAML file<br>- `logger`: Logger instance | None |
+| `initialize_prompt_templates(self)` | Initializes prompt templates for various chat interactions and updates class attributes. | None | None |
+| `create_prompt_template(self, category: str, template: str, ref_mode: bool = False) -> ChatPromptTemplate` | Creates a prompt template based on a given category and template, optionally including reference data. | - `category: str`: Category of the prompt<br>- `template: str`: Template within the category<br>- `ref_mode: bool = False`: Include reference data if True | `ChatPromptTemplate` object |
+| `initialize_llm_instances(self)` | Initializes language model instances based on configuration parameters. | None | None |
+| `initialize_llm_chains(self, model, suffixes)` | Initializes language model chains, each with a specific prompt template and suffix. | - `model`: Language model instance<br>- `suffixes: list[str]`: List of suffix identifiers | None |
+| `create_llm_chain(self, llm, prompt_template)` | Creates a language model chain configured with a specified language model and prompt template. | - `llm`: Language model instance<br>- `prompt_template`: Prompt template for the chain | `LLMChain` instance |
+
+---
+
+### Prediction Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `make_prediction(self, chain, query: str, action: str, msg_id: str = '', ref_data: str = '')` | Executes a prediction using a specified language model chain, providing logging and token tracking. | - `chain`: Language model chain<br>- `query: str`: Input query<br>- `action: str`: Action type for logging<br>- `msg_id: str = ''`: Message ID for logging<br>- `ref_data: str = ''`: Reference data (optional) | Tuple `(result: str, tokens_used: int)` |
+| `anti_attack(self, query: str, msg_id: str = '')` | Analyzes a query for potential attacks using an anti-attack language model chain. | - `query: str`: Query to analyze<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(detection: str, explanation: str, tokens_used: int)` |
+| `adaptor(self, query: str, msg_id: str = '')` | Adapts a query using an adaptation-specific language model chain. | - `query: str`: Query to adapt<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(adapted_text: str, tokens_used: int)` |
+| `editor(self, query: str, msg_id: str = '')` | Edits a query using an editing-optimized language model chain. | - `query: str`: Query to edit<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(edited_text: str, tokens_used: int)` |
+| `optimizer(self, query: str, msg_id: str = '')` | Optimizes a query, extracting various components from the optimization results. | - `query: str`: Query to optimize<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(translation: str, extraction: str, elaboration: str, quotation: str, challenge: str, proposal: str, tokens_used: int)` |
+| `qa(self, query: str, ref_data: str, msg_id: str = '')` | Executes a question-answering task using a language model chain. | - `query: str`: Question query<br>- `ref_data: str`: Reference data<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(response: str, tokens_used: int)` |
+
+---
+
+### Retrieval Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `retrieve_docs(self, query: str, msg_id: str = '', filter_mode: str = 'primary')` | Retrieves documents matching a query, filtered as primary or secondary sources. | - `query: str`: Query string<br>- `msg_id: str = ''`: Message ID for logging<br>- `filter_mode: str = 'primary'`: 'primary' or 'secondary' | List of documents |
+| `retrieve_docs_metadata_filtering(self, query: str, msg_id: str = '', metadata_filter: dict | None = None)` | Retrieves documents matching a query, filtered based on metadata. | - `query: str`: Query string<br>- `msg_id: str = ''`: Message ID for logging<br>- `metadata_filter: dict | None = None`: Metadata filter | List of documents |
+| `retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary', url_prefix: str = "https://www.sefaria.org/")` | Retrieves nodes corresponding to linker results from the graph database. | - `linker_results: list[dict]`: Results from the linker API<br>- `msg_id: str = ''`: Message ID for logging<br>- `filter_mode: str = 'primary'`: 'primary' or 'secondary'<br>- `url_prefix: str`: URL prefix | List of `Document` objects |
+| `get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str | None = None, msg_id: str = '')` | Retrieves neighbor nodes of a given URL from the knowledge graph. | - `url: str`: Central node URL<br>- `direction: str`: Edge direction ('incoming', 'outgoing', 'both_ways')<br>- `order: int`: Number of hops<br>- `score_central_node: float`: Central node score<br>- `filter_mode_nodes: str | None = None`: Node filter mode<br>- `msg_id: str = ''`: Message ID for logging | List of tuples `(Document, score)` |
+| `query_graph_db_by_url(self, urls: list[str])` | Queries the graph database for nodes with given URLs. | - `urls: list[str]`: List of URLs | List of `Document` objects |
+| `query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=0, msg_id: str = '')` | Queries the Sefaria Linker API and returns the JSON response. | - `text_title: str = ""`: Text title<br>- `text_body: str = ""`: Text body<br>- `with_text: int = 1`: Include text in response<br>- `debug: int = 0`: Debug flag<br>- `max_segments: int = 0`: Max segments<br>- `msg_id: str = ''`: Message ID for logging | JSON response (dict or str) |
+| `retrieve_docs_linker(self, screen_res: str, enriched_query: str, msg_id: str = '', filter_mode: str = 'primary')` | Retrieves documents from the Sefaria Linker API based on a query. | - `screen_res: str`: Screen result query<br>- `enriched_query: str`: Enriched query<br>- `msg_id: str = ''`: Message ID for logging<br>- `filter_mode: str = 'primary'`: 'primary' or 'secondary' | List of document dictionaries |
+| `retrieve_situational_info(self, msg_id: str = '')` | Retrieves current date and time as a formatted string. | - `msg_id: str = ''`: Message ID for logging | Formatted date and time string |
+
+---
+
+### Processing and Merging Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `select_reference(self, query: str, retrieval_res, msg_id: str = '')` | Selects useful references from retrieval results using a language model. | - `query: str`: Query string<br>- `retrieval_res`: Retrieved documents<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(selected_retrieval_res: list, tokens_used: int)` |
+| `sort_reference(self, scripture_query: str, enriched_query: str, retrieval_res, filter_mode: str | None = 'primary', msg_id: str = '')` | Sorts retrieval results based on relevance to the query. | - `scripture_query: str`: Scripture query<br>- `enriched_query: str`: Enriched query<br>- `retrieval_res`: Retrieval results<br>- `filter_mode: str | None = 'primary'`: Filter mode<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(sorted_src_rel_dict: dict, src_data_dict: dict, src_ref_dict: dict, total_tokens: int)` |
+| `merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str = '')` | Merges chunks with the same URL to consolidate content and sources. | - `retrieval_res: list[tuple[Document, float]]`: Documents and scores<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(sorted_src_rel_dict: dict, src_data_dict: dict, src_ref_dict: dict)` |
+| `merge_linker_refs(self, retrieved_docs: list, p_sorted_src_rel_dict: dict, p_src_data_dict: dict, p_src_ref_dict: dict, msg_id: str = '')` | Merges new linker references into existing reference dictionaries. | - `retrieved_docs: list`: New documents<br>- `p_sorted_src_rel_dict: dict`: Existing relevance dict<br>- `p_src_data_dict: dict`: Existing data dict<br>- `p_src_ref_dict: dict`: Existing ref dict<br>- `msg_id: str = ''`: Message ID for logging | Tuple of updated dictionaries |
+
+---
+
+### Scoring and Ranking Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `score_document_by_graph_distance(self, n_hops: int, start_score: float, score_decrease_per_hop: float) -> float` | Scores a document based on its distance from the central node in the graph. | - `n_hops: int`: Number of hops<br>- `start_score: float`: Starting score<br>- `score_decrease_per_hop: float`: Score decrease per hop | `float` score |
+| `rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str | None = None, semantic_similarity_scores: list[float] | None = None, filter_mode: str | None = None, msg_id: str = '')` | Ranks documents based on relevance to the query. | - `chunks: list[Document]`: Documents to rank<br>- `enriched_query: str`: Enriched query<br>- `scripture_query: str | None = None`: Scripture query<br>- `semantic_similarity_scores: list[float] | None = None`: Precomputed scores<br>- `filter_mode: str | None = None`: Filter mode<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(sorted_chunks: list[Document], ranking_scores: list[float], total_token_count: int)` |
+| `compute_semantic_similarity_documents_query(self, documents: list[Document], query: str, msg_id: str = '')` | Computes semantic similarity between documents and a query. | - `documents: list[Document]`: Documents<br>- `query: str`: Query string<br>- `msg_id: str = ''`: Message ID for logging | `np.array` of similarity scores |
+| `get_reference_class(self, documents: list[Document], scripture_query: str, enriched_query: str, msg_id: str = '')` | Determines the reference class for each document based on the query. | - `documents: list[Document]`: Documents<br>- `scripture_query: str`: Scripture query<br>- `enriched_query: str`: Enriched query<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(reference_classes: np.array, total_token_count: int)` |
+| `get_page_rank_scores(self, documents: list[Document], msg_id: str = '')` | Retrieves PageRank scores for documents. | - `documents: list[Document]`: Documents<br>- `msg_id: str = ''`: Message ID for logging | `np.array` of PageRank scores |
+
+---
+
+### Graph and Node Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `get_graph_neighbors_by_url(self, url: str, relationship: str, depth: int, filter_mode_nodes: str | None = None, msg_id: str = '')` | Retrieves neighbor nodes from the graph database based on a URL. | - `url: str`: Central node URL<br>- `relationship: str`: Edge relationship<br>- `depth: int`: Neighbor depth<br>- `filter_mode_nodes: str | None = None`: Node filter mode<br>- `msg_id: str = ''`: Message ID for logging | List of tuples `(Node, distance)` |
+| `get_chunks_corresponding_to_nodes(self, nodes: list[Document], batch_size: int = 20, max_nodes: int | None = None, unique_url: bool = True, msg_id: str = '')` | Retrieves chunks corresponding to given nodes. | - `nodes: list[Document]`: Nodes<br>- `batch_size: int = 20`: Batch size<br>- `max_nodes: int | None = None`: Max nodes<br>- `unique_url: bool = True`: Ensure unique URLs<br>- `msg_id: str = ''`: Message ID for logging | List of `Document` objects |
+| `get_node_corresponding_to_chunk(self, chunk: Document, msg_id: str = '')` | Retrieves the node corresponding to a given chunk. | - `chunk: Document`: Chunk document<br>- `msg_id: str = ''`: Message ID for logging | `Document` object representing the node |
+| `is_primary_document(self, doc: Document) -> bool` | Checks if a document is a primary document. | - `doc: Document`: Document to check | `bool` |
+
+---
+
+## Ontology Function
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `topic_ontology(self, extraction: str = '', msgid: str = '', slugs_mode: bool = False)` | Processes topic names to find slugs and retrieves topic descriptions. | - `extraction: str = ''`: Topic names<br>- `msgid: str = ''`: Message ID for logging<br>- `slugs_mode: bool = False`: Return slugs if True | Dict of descriptions or list of slugs |
+
+---
+
+### String Generation Functions
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False)` | Constructs formatted reference strings and citation lists. | - `sorted_src_rel_dict`: Sorted relevance dict<br>- `src_data_dict`: Source data dict<br>- `src_ref_dict`: Source ref dict<br>- `msg_id: str = ''`: Message ID for logging<br>- `ref_mode: str = 'primary'`: Reference mode<br>- `n_citation_base: int = 0`: Starting citation index<br>- `is_linker_search: bool = False`: Linker search flag | Tuple `(conc_ref_data: str, citations: str, deeplinks: list, n_citation: int)` |
+| `generate_kg_deeplink(self, deeplinks, msg_id: str = '')` | Generates a Knowledge Graph deep link URL. | - `deeplinks`: List of deep links<br>- `msg_id: str = ''`: Message ID for logging | `str` deep link URL |
+
+---
+
+### Graph Traversal Function
+
+| Function Name | Purpose | Input Parameters | Output |
+|---------------|---------|------------------|--------|
+| `graph_traversal_retriever(self, screen_res: str, scripture_query: str, enriched_query: str, filter_mode_nodes: str | None = None, linker_results: list[dict] | None = None, semantic_search_results: list[tuple[Document, float]] | None = None, msg_id: str = '')` | Retrieves related chunks by traversing the graph starting from seed chunks. | - `screen_res: str`: Screen result query<br>- `scripture_query: str`: Scripture query<br>- `enriched_query: str`: Enriched query<br>- `filter_mode_nodes: str | None = None`: Node filter mode<br>- `linker_results: list[dict] | None = None`: Linker results<br>- `semantic_search_results: list[tuple[Document, float]] | None = None`: Semantic search results<br>- `msg_id: str = ''`: Message ID for logging | Tuple `(retrieval_res_kg: list[tuple[Document, float]], total_token_count: int)` |
 ## Future Directions
 While currently focused on Judaic scriptures, the underlying technology of Virtual Havruta has potential for broader applications. Its adaptability to other domains highlights the project's versatility and the promise of RAG technology in various fields.
 ## Acknowledgments
