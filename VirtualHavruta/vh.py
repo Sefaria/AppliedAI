@@ -432,7 +432,7 @@ class VirtualHavruta:
             A list of documents matching the linker results.
 
         Example:
-        retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
+        res = vh.retrieve_nodes_matching_linker_results(linker_results, msg_id, filter_mode=filter_mode)
         '''
 
         urls_linker_results = list({url_prefix +linker_res["url"] if not linker_res["url"].startswith("http") else linker_res["url"]
@@ -472,7 +472,7 @@ class VirtualHavruta:
             A list of tuples, each containing a document and its score.
 
         Example:
-        get_retrieval_results_knowledge_graph(
+        res = vh.get_retrieval_results_knowledge_graph(
             url=top_node.metadata["url"],
             direction=self.config["database"]["kg"]["direction"],
             order=self.config["database"]["kg"]["order"],
@@ -506,7 +506,7 @@ class VirtualHavruta:
             The calculated score.
 
         Example:
-        scores = [self.score_document_by_graph_distance(
+        scores = [vh.score_document_by_graph_distance(
             distance, 
             start_score=score_central_node, 
             score_decrease_per_hop=0.1
@@ -532,7 +532,7 @@ class VirtualHavruta:
             A list of (node, distance) tuples, where distance is the number of hops from the central node.
 
         Example:
-        get_graph_neighbors_by_url(
+        res = vh.get_graph_neighbors_by_url(
             url, 
             direction, 
             order, 
@@ -584,7 +584,7 @@ class VirtualHavruta:
             A list of documents.
 
         Example:
-        nodes_linker: list[Document] = self.query_graph_db_by_url(urls=urls_linker_results)
+        nodes_linker: list[Document] = vh.query_graph_db_by_url(urls=urls_linker_results)
         '''
         query_parameters = {"urls": urls}
         query_string="""
@@ -620,7 +620,7 @@ class VirtualHavruta:
         Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [] and 0.
 
         Example:
-        seed_chunks, token_count = self.select_reference(enriched_query, seed_chunks, msg_id=msg_id)
+        seed_chunks, token_count = vh.select_reference(enriched_query, seed_chunks, msg_id=msg_id)
         '''
         
         try:
@@ -710,7 +710,7 @@ class VirtualHavruta:
             A tuple containing sorted source relevance dictionary, source data dictionary, and source reference dictionary.
 
         Example:
-        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
+        sorted_src_rel_dict, src_data_dict, src_ref_dict = vh.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
         '''
         src_data_dict = {}
         src_ref_dict = {}
@@ -767,7 +767,7 @@ class VirtualHavruta:
         Exception: Catches and logs any exception that occurs during the selection process, defaulting the result to [].
 
         Example:
-        selected_idx, tok_count = self.selector(query, conc_ref_data, msg_id)
+        selected_idx, tok_count = vh.selector(query, conc_ref_data, msg_id)
         '''
         
         response, tok_count = self.make_prediction(
@@ -807,7 +807,7 @@ class VirtualHavruta:
         Exception: Catches and logs any exception that occurs during the classification conversion process, defaulting the result to 0.
 
         Example:
-        ref_class, token_count = self.classification(query=query, ref_data=ref_data, msg_id=msg_id)
+        ref_class, token_count = vh.classification(query=query, ref_data=ref_data, msg_id=msg_id)
         '''
         # Classifiy the data with LLM
         ref_class, tok_count = self.make_prediction(
@@ -999,7 +999,7 @@ class VirtualHavruta:
         HTTPError: If an HTTP error occurs during the API request, an HTTPError exception is raised and logged.
 
         Example:
-        result = self.query_sefaria_linker(text_title=screen_res, text_body=enriched_query, msg_id=msg_id)
+        result = vh.query_sefaria_linker(text_title=screen_res, text_body=enriched_query, msg_id=msg_id)
         '''
         # Sefaria Linker API endpoint
         api_url = "https://www.sefaria.org/api/find-refs"
@@ -1426,7 +1426,7 @@ class VirtualHavruta:
             A list of seed chunks.
 
         Example:
-        seed_chunks = self.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
+        seed_chunks = vh.get_linker_seed_chunks(linker_results=linker_results, msg_id=msg_id)
         '''
 
         self.logger.info(f"MsgID={msg_id}. [LINKER SEED CHUNKS] Starting get_linker_seed_chunks for KG search.")
@@ -1459,7 +1459,7 @@ class VirtualHavruta:
             A tuple containing ranked chunks, ranking scores, and the total token count.
 
         Example:
-        sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(
+        sorted_docs, sorted_ranking_scores, token_count = vh.rank_documents(
             documents=chunks,
             enriched_query=enriched_query,
             scripture_query=scripture_query,
@@ -1508,8 +1508,8 @@ class VirtualHavruta:
             The similarity score between the documents and the query.
 
         Example:
-        semantic_similarity_scores = self.compute_semantic_similarity_documents_query(
-            chunks=documents, 
+        semantic_similarity_scores = vh.compute_semantic_similarity_documents_query(
+            documents=documents, 
             query=enriched_query, 
             msg_id=msg_id
         )
@@ -1543,8 +1543,8 @@ class VirtualHavruta:
             An array of reference classes corresponding to each document.
 
         Example:
-        reference_classes, token_count = self.get_reference_class(
-            chunks=documents, 
+        reference_classes, token_count = vh.get_reference_class(
+            documents=documents, 
             scripture_query=scripture_query, 
             enriched_query=enriched_query, 
             msg_id=msg_id
@@ -1578,8 +1578,8 @@ class VirtualHavruta:
             An array of scaled PageRank scores.
 
         Example:
-        page_rank_scores = self.get_page_rank_scores(
-            chunks=documents, 
+        page_rank_scores = vh.get_page_rank_scores(
+            documents=documents, 
             msg_id=msg_id
         )
         '''
@@ -1608,7 +1608,7 @@ class VirtualHavruta:
             True if the document is a primary document, False otherwise.
 
         Example:
-        self.is_primary_document(doc)
+        res = vh.is_primary_document(doc)
         '''
         return any(s in doc.metadata['source'] for s in self.primary_source_filter)
 
@@ -1634,7 +1634,7 @@ class VirtualHavruta:
 
         Example:
         seed_chunks = self.get_chunks_corresponding_to_nodes(
-            seed_chunks_vector_db, 
+            nodes=seed_chunks_vector_db, 
             msg_id=msg_id
         )
         '''
@@ -1684,7 +1684,7 @@ class VirtualHavruta:
             The document representing the node corresponding to the chunk.
 
         Example:
-        node = self.get_node_corresponding_to_chunk(
+        node = vh.get_node_corresponding_to_chunk(
             chunk=chunk, 
             msg_id=msg_id
         )
