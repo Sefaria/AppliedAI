@@ -445,7 +445,7 @@ class VirtualHavruta:
                 url_to_node[url] = node
             else:
                 url_to_node[url].metadata["source"] += " | " + node.metadata["source"]
-        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Graph nodes retrieved using linker URLs: {['URL='+url+' SOURCE='+node.metadata["source"] for url, node in url_to_node.items()]}")
+        self.logger.info(f"MsgID={msg_id}. [LINKER-GRAGH RETRIEVAL] Graph nodes retrieved using linker URLs: {['URL='+url+' SOURCE='+node.metadata['source'] for url, node in url_to_node.items()]}")        
         return list(url_to_node.values())
     
     def get_retrieval_results_knowledge_graph(self, url: str, direction: str, order: int, score_central_node: float, filter_mode_nodes: str|None = None, msg_id: str = '') -> list[tuple[Document, float]]:
