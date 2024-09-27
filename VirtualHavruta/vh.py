@@ -66,10 +66,10 @@ class VirtualHavruta:
             self.config = yaml.safe_load(f)
 
         # Initialize Neo4j vector index and retrieve DB configs
-        model_api = self.config['openai_model_api']
+        self.model_api = self.config['openai_model_api']
         config_emb_db = self.config['database']['embed']
         self.neo4j_vector = Neo4jVector.from_existing_index(
-            OpenAIEmbeddings(model=model_api['embedding_model']),
+            OpenAIEmbeddings(model=self.model_api['embedding_model']),
             index_name="index",
             url=config_emb_db['url'],
             username=config_emb_db['username'],
@@ -150,7 +150,6 @@ class VirtualHavruta:
         
         Returns: None
         '''
-        model_api = self.config['openai_model_api']
         chain_setups = self.config['llm_chain_setups']
         
         # Adding a condition to include json kwargs for models ending with '_json'
@@ -158,8 +157,8 @@ class VirtualHavruta:
             model_kwargs = {"response_format": {"type": "json_object"}} if model_name.endswith('_json') else {}
             model_key = model_name.replace('_json', '')  # Removes the '_json' suffix for lookup in model_api
             setattr(self, model_name, ChatOpenAI(
-                temperature=model_api.get(f"{model_key}_temperature", None),
-                model=model_api.get(model_key, None),
+                temperature=self.model_api.get(f"{model_key}_temperature", None),
+                model=self.model_api.get(model_key, None),
                 model_kwargs=model_kwargs
             ))
             self.initialize_llm_chains(getattr(self, model_name), suffixes)
