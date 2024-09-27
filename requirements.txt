@@ -50,3 +50,4 @@ typing-inspect==0.9.0
 tzdata==2024.1
 urllib3==2.2.1
 yarl==1.9.4
+pytest==8.3.3
