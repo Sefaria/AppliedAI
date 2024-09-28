@@ -65,18 +65,20 @@ class VirtualHavruta:
         with open(config_file, 'r') as f:
             self.config = yaml.safe_load(f)
 
-        # Initialize Neo4j vector index and retrieve DB configs
+        # Retrieve model and DB configs
         self.model_api = self.config['openai_model_api']
-        config_emb_db = self.config['database']['embed']
+        self.config_emb_db = self.config['database']['embed']
+        self.config_kg_db = self.config['database']['kg']
+        
+        # Initialize Neo4j vector index 
         self.neo4j_vector = Neo4jVector.from_existing_index(
             OpenAIEmbeddings(model=self.model_api['embedding_model']),
             index_name="index",
-            url=config_emb_db['url'],
-            username=config_emb_db['username'],
-            password=config_emb_db['password'],
+            url=self.config_emb_db['url'],
+            username=self.config_emb_db['username'],
+            password=self.config_emb_db['password'],
         )
-        self.top_k = config_emb_db['top_k']
-        self.neo4j_deeplink = self.config['database']['kg']['neo4j_deeplink']
+        self.top_k = self.config_emb_db['top_k']
 
         # Initiate logger
         self.logger = logger
@@ -90,6 +92,7 @@ class VirtualHavruta:
         self.num_primary_citations_linker = linker_references['num_primary_citations']
         self.num_secondary_citations_linker = linker_references['num_secondary_citations']
         self.linker_primary_source_filter = linker_references['primary_source_filter']
+        self.neo4j_deeplink = self.config_kg_db['neo4j_deeplink']
         
         # Initialize prompt templates and LLM instances
         self.initialize_prompt_templates()
@@ -473,8 +476,8 @@ class VirtualHavruta:
         Example:
         res = vh.get_retrieval_results_knowledge_graph(
             url=top_node.metadata["url"],
-            direction=self.config["database"]["kg"]["direction"],
-            order=self.config["database"]["kg"]["order"],
+            direction=self.config_kg_db["direction"],
+            order=self.config_kg_db["order"],
             filter_mode_nodes=filter_mode_nodes,
             score_central_node=6.0,
             msg_id=msg_id
@@ -556,11 +559,11 @@ class VirtualHavruta:
             {source_filter}
             RETURN DISTINCT neighbor, {i} AS depth
             """
-            with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+            with neo4j.GraphDatabase.driver(self.config_kg_db["url"], auth=(self.config_kg_db["username"], self.config_kg_db["password"])) as driver:
                 neighbor_nodes, _, _ = driver.execute_query(
                 query,
                 parameters_=query_params,
-                database_=self.config["database"]["kg"]["name"],)
+                database_=self.config_kg_db["name"],)
             nodes.extend(neighbor_nodes)
         self.logger.info(f"MsgID={msg_id}. [GRAGH NEIGHBOR RETRIEVAL] Retrieved {len(nodes)} graph neighbors.")
         return nodes
@@ -591,11 +594,11 @@ class VirtualHavruta:
         WHERE any(substring IN $urls WHERE n.url = substring)
         RETURN n
         """
-        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+        with neo4j.GraphDatabase.driver(self.config_kg_db["url"], auth=(self.config_kg_db["username"], self.config_kg_db["password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["kg"]["name"],)
+            database_=self.config_kg_db["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
     def select_reference(self, query: str, retrieval_res, msg_id: str = ''):
@@ -1357,7 +1360,7 @@ class VirtualHavruta:
         n_accepted_chunks = 0
         n_iter = 0 
         seed_iteration = True
-        while n_accepted_chunks < self.config["database"]["kg"]["max_depth"]:          
+        while n_accepted_chunks < self.config_kg_db["max_depth"]:          
             if len(candidate_chunks) == 0:
                 break
             # Get the top chunk
@@ -1368,7 +1371,7 @@ class VirtualHavruta:
                 ranking_scores_collected_chunks.append(local_top_score)
                 n_accepted_chunks += 1
             # avoid final loop execution which does not add a chunk to collected_chunks anyways
-            if n_accepted_chunks >= self.config["database"]["kg"]["max_depth"]:
+            if n_accepted_chunks >= self.config_kg_db["max_depth"]:
                 break
             else:
                 n_iter +=1
@@ -1377,8 +1380,8 @@ class VirtualHavruta:
             top_node = self.get_node_corresponding_to_chunk(top_chunk, msg_id=msg_id)
             neighbor_nodes_scores: list[tuple[Document, int]] = self.get_retrieval_results_knowledge_graph(
                 url=top_node.metadata["url"],
-                direction=self.config["database"]["kg"]["direction"],
-                order=self.config["database"]["kg"]["order"],
+                direction=self.config_kg_db["direction"],
+                order=self.config_kg_db["order"],
                 filter_mode_nodes=filter_mode_nodes,
                 score_central_node=6.0,
                 msg_id=msg_id
@@ -1696,11 +1699,11 @@ class VirtualHavruta:
         AND n.versionTitle=$versionTitle
         RETURN n
         """
-        with neo4j.GraphDatabase.driver(self.config["database"]["kg"]["url"], auth=(self.config["database"]["kg"]["username"], self.config["database"]["kg"]["password"])) as driver:
+        with neo4j.GraphDatabase.driver(self.config_kg_db["url"], auth=(self.config_kg_db["username"], self.config_kg_db["password"])) as driver:
             nodes, _, _ = driver.execute_query(
             query_string,
             parameters_=query_parameters,
-            database_=self.config["database"]["kg"] ["name"],)
+            database_=self.config_kg_db["name"],)
         assert len(nodes) == 1
         node = nodes[0]
         self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Found chunk-corresponding node for {query_parameters}")
