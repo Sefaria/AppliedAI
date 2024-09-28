@@ -43,9 +43,11 @@ openai_model_api:
 # LLM Chain Setups
 llm_chain_setups:
   main_model: ['chain1', 'chain2']
-  main_model_json: ['chain3']
+  main_model_json: ['chain3'] #LLM chains that require a json output format
   support_model: ['chain4', 'chain5', 'chain6']
-  support_model_json: []
+  support_model_json: [] #LLM chains that require a json output format
+  ref_chains: ['chain1', 'chain3', 'chain4', 'chain5'] #LLM chains that require reference data as part of the input. These should correspond to those chains in main_model(_json) and support_model(_json).
+  no_ref_chains: ['chain2', 'chain6'] #LLM chains that don't require reference data as part of the input. These should correspond to those chains in main_model(_json) and support_model(_json).
 
 # Reference Settings
 references:

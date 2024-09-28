@@ -67,6 +67,7 @@ class VirtualHavruta:
 
         # Retrieve model and DB configs
         self.model_api = self.config['openai_model_api']
+        self.chain_setups = self.config['llm_chain_setups']
         self.config_emb_db = self.config['database']['embed']
         self.config_kg_db = self.config['database']['kg']
         
@@ -107,8 +108,8 @@ class VirtualHavruta:
         Additionally, it creates a separate prompt template for the QA (question-answering) category, including reference data.
 
         '''
-        no_ref_categories = ['anti_attack', 'adaptor', 'editor', 'optimization']
-        ref_categories = ['classification', 'qa', 'selector']
+        no_ref_categories = self.chain_setups['no_ref_chains']
+        ref_categories = self.chain_setups['ref_chains']
         no_ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat) for cat in no_ref_categories}
         ref_prompts = {'prompt_'+cat: self.create_prompt_template('system', cat, True) for cat in ref_categories}
         self.__dict__.update(no_ref_prompts)
@@ -153,18 +154,17 @@ class VirtualHavruta:
         
         Returns: None
         '''
-        chain_setups = self.config['llm_chain_setups']
-        
         # Adding a condition to include json kwargs for models ending with '_json'
-        for model_name, suffixes in chain_setups.items():
-            model_kwargs = {"response_format": {"type": "json_object"}} if model_name.endswith('_json') else {}
-            model_key = model_name.replace('_json', '')  # Removes the '_json' suffix for lookup in model_api
-            setattr(self, model_name, ChatOpenAI(
-                temperature=self.model_api.get(f"{model_key}_temperature", None),
-                model=self.model_api.get(model_key, None),
-                model_kwargs=model_kwargs
-            ))
-            self.initialize_llm_chains(getattr(self, model_name), suffixes)
+        for model_name, suffixes in self.chain_setups.items():
+            if model_name.startswith(('main', 'support')):
+                model_kwargs = {"response_format": {"type": "json_object"}} if model_name.endswith('_json') else {}
+                model_key = model_name.replace('_json', '')  # Removes the '_json' suffix for lookup in model_api
+                setattr(self, model_name, ChatOpenAI(
+                    temperature=self.model_api.get(f"{model_key}_temperature", None),
+                    model=self.model_api.get(model_key, None),
+                    model_kwargs=model_kwargs
+                ))
+                self.initialize_llm_chains(getattr(self, model_name), suffixes)
 
     def initialize_llm_chains(self, model, suffixes):
         '''
