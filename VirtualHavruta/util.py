@@ -246,7 +246,10 @@ def construct_db_filter(matched_filters: dict) -> dict:
     # Create filter conditions for each field
     filter_conditions = []
     for k, v in matched_filters.items():
-        if len(v) == 1:
+        # As of Oct-2024, metadata field names ending with s have lists as values (e.g., authorIDs). But langchain-community==0.2.7 doesn't support an $elemMatch operator. So, in such cases we tentatively use $eq for the whole list.
+        if k.endswith('s'):
+            filter_conditions.append({k: {"$eq": v}})
+        elif len(v) == 1:
             filter_conditions.append({k: {"$eq": v[0]}})
         else:
             filter_conditions.append({k: {"$in": v}})
