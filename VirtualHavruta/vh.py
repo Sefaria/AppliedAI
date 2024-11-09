@@ -2270,10 +2270,13 @@ class SourceCollection:
         '''
 
         self.logger.info(f"SessionID={self.session_id}. [RERANKING] Starting reranking chunks.")
-        if not semantic_similarity_scores:
+        if semantic_similarity_scores:
+            semantic_similarity_scores = np.array(semantic_similarity_scores).reshape((-1, 1))
+        else:
             if not self.session.enriched_query:
                 raise ValueError(f"SessionID={self.session_id}. Either provide semantic similarity scores or enriched query.")
             semantic_similarity_scores: np.array = self.vh.compute_semantic_similarity_documents_query(chunks, query=self.session.enriched_query, msg_id=self.session_id)
+
         reference_classes = self.get_reference_class(chunks)
 
         if filter_mode == "secondary":
