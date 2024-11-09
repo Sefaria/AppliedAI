@@ -2001,7 +2001,8 @@ class StudySession:
         # todo: should that be passed more explicitly?
         self.source_collection = SourceCollection(self)
         self.source_collection.rank()
-        return self.source_collection.as_string()  #still wants to be jsonified
+        self.source_collection.merge()
+        return self.source_collection
 
 
 class RankedDocuments:
@@ -2082,6 +2083,9 @@ class RankedDocuments:
 
 class SourceCollection:
     def __init__(self, study_session: StudySession):
+        self.all_ranked_docs = None
+        self.final_reference_docs = None
+        self.all_primary_documents = None
         self.ranked_secondary_documents = RankedDocuments()
         self.ranked_primary_documents = RankedDocuments()
         self.retrieval_set = None
@@ -2139,20 +2143,27 @@ class SourceCollection:
             if selected_secondary_docs:
                 self.ranked_secondary_documents = self.sort_reference(selected_secondary_docs, 'secondary')
 
-    def as_string(self):
-        # Merge linker api results with original p_sorted_src_rel_dict, p_src_data_dict and p_src_ref_dict primary
-        # todo: Sloppy to modify internals for printing.  We might want a clean copy later.
-        all_primary_documents = self.ranked_primary_documents.merge_linker_refs(self.all_citations) \
+    def merge(self):
+        self.all_primary_documents = self.ranked_primary_documents.merge_linker_refs(self.all_citations) \
             if self.has_citations() \
             else self.ranked_primary_documents
 
-        final_reference_docs = all_primary_documents.first_n(self.vh.num_primary_citations) \
+        self.final_reference_docs = self.all_primary_documents.first_n(self.vh.num_primary_citations) \
                + self.ranked_secondary_documents.first_n(self.vh.num_secondary_citations)
-        all_ranked_docs = all_primary_documents | self.ranked_secondary_documents
+        self.all_ranked_docs = self.all_primary_documents | self.ranked_secondary_documents
 
+    def as_docs(self) -> list[tuple[str, float]]:
+        """
+        Returns the final reference documents as a list of tuples, where each tuple contains a document URL and its relevance score.
+
+        :return: List of tuples, each with document URL and relevance score.
+        """
+        return self.final_reference_docs
+
+    def as_string(self):
         citation_parts = []
-        for n, (k, rel_score) in enumerate(final_reference_docs, 1):
-            citation_parts.append(f"\n{n}. {all_ranked_docs.ref_dict[k]}")
+        for n, (k, rel_score) in enumerate(self.final_reference_docs, 1):
+            citation_parts.append(f"\n{n}. {self.all_ranked_docs.ref_dict[k]}")
             self.logger.info(
                     f"SessionID={self.session_id}. [GENERATE REFERENCE STRING] Included this reference: {k}. Relevance score = {rel_score}."
                 )
