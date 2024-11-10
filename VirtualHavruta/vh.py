@@ -25,7 +25,7 @@ import requests
 import neo4j
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
-    min_max_scaling, part_res, find_matched_filters, construct_db_filter, load_selected_keys
+    min_max_scaling, part_res, find_matched_filters, construct_db_filter, load_selected_keys, merge_topics
 
 
 # Main Virtual Havruta functionalities
@@ -988,6 +988,7 @@ class VirtualHavruta:
             self.logger.info(f"MsgID={msg_id}. [KG DEEP LINK] Empty KG deep link for secondary references.")
         return neo4j_deeplink
 
+    #todo: deprecated in favor of StudySession
     def qa(self, query: str, ref_data: str, msg_id: str = ''):
         '''
         Executes a query against a language model chain, returning the response and token count.
@@ -1776,6 +1777,11 @@ class VirtualHavruta:
 class StudySession:
     def __init__(self, vh: VirtualHavruta):
 
+        self.graph_flag = None
+        self.main_response = None
+        self.topic_ont_dict = None
+        self.matched_topics_in_query = None
+        self.expanded_extraction = None
         self.infer_topics_flag = False
         self.topic_slugs = None
         self.situational_info = None
@@ -1816,8 +1822,7 @@ class StudySession:
 
     # todo: classify costs by model used
 
-    def retrieve(self, query: str) -> SourceCollection:
-        self.original_query = query
+    def _setup(self):
         self.retrieve_situational_info()
         self.ingest_query()
         self.set_derivative_queries()
@@ -1826,16 +1831,52 @@ class StudySession:
         self.set_filters()
         self.find_explicit_citations()    # Retrieve primary and secondary documents from linker api
 
+    def retrieve(self, query: str) -> SourceCollection:
+        self.original_query = query
+        self._setup()
+
         # The source collection grabs session_id, matched_filters, and all_citations from self.
         # todo: should that be passed more explicitly?
         self.source_collection = SourceCollection(self, debug_flag=self.debug_flag)
+        self.source_collection.retrieve_with_semantic_search()
         self.source_collection.rank()
         self.source_collection.merge()
         return self.source_collection
 
     def retrieve_and_generate(self, query: str):
-        response = {'answer': '', 'citations': []}
-        response["citations"] = self.retrieve(query).as_string()
+        self.original_query = query
+        self._setup()
+        response = {}
+        self.source_collection = SourceCollection(self, debug_flag=self.debug_flag)
+        if self.graph_flag:
+            self.source_collection.retrieve_with_graph()
+        if not self.source_collection.graph_retrieval_successful:
+            self.source_collection.retrieve_with_semantic_search()
+        self.source_collection.rank()
+        self.source_collection.merge()
+        citations_string = self.source_collection.as_citations_string()
+        ref_data = self.source_collection.as_reference_data_string() + f"\nAd-hoc supplementary information: [Situational Context] {self.situational_info} [Tentative Translation in English] {self.translation} [Thoughts, Challenges, and Potential Ways to Answer] {self.elaboration} {self.challenge} {self.proposal} [Related Topics in Sefaria Database] {self.topic_ont_dict}"
+
+        # Formulate the main response based on the combined reference data
+        main_response = self.qa(self.edited_query, ref_data)
+
+        if not self.source_collection.is_empty():
+            if "@IRRELEVANT-SOURCE@" in main_response:
+                final_msg = part_res(main_response, '@IRRELEVANT-SOURCE@')
+                self.logger.warning(f"SessionID={self.session_id}. Model found irrelevant references!")
+            else:
+                final_msg = main_response + "\n"
+        else:
+            # If no citations are available, inform the user
+            final_msg = "At the moment I couldn't find directly relevant information in my database. I appreciate your understanding."
+
+        self.logger.info(f"SessionID={self.session_id}. [FINAL RESPONSE] {final_msg}")
+        self.logger.info(f"SessionID={self.session_id}. {self.get_costs_as_string()}")
+        response['answer'] = final_msg
+        response["citations"] = citations_string
+        if self.debug_flag:
+            response['debug'] = self.debug
+        return response
 
     def retrieve_situational_info(self):
         '''
@@ -1900,17 +1941,35 @@ class StudySession:
     def infer_topics(self):
         self.topic_slugs = self.vh.topic_ontology(self.extraction, self.session_id, True)
 
-    def set_filters(self):
-        if self.infer_topics_flag:
-            self.matched_filters = find_matched_filters(f"{self.extraction} {', '.join(self.topic_slugs)}", self.vh.metadata_ranges)
+        #todo: Are all of these needed at the class level?
+        self.matched_topics_in_query = find_matched_filters(f"{self.edited_query} {self.translation}", self.vh.topic_ranges)
+        self.expanded_extraction = merge_topics(self.extraction, self.matched_topics_in_query)
+        self.logger.info(f"SessionID={self.session_id}. [TOPIC EXPANSION] Topics matched in query={self.matched_topics_in_query}. Extracted key concepts after merging={self.expanded_extraction}")
+
+        self.topic_ont_dict = self.vh.topic_ontology(self.expanded_extraction, self.session_id)
+        if not self.topic_ont_dict:
+            self.logger.info(f"SessionID={self.session_id} [ONTOLOGY] No topics found for the given extraction.")
+            if self.debug_flag:
+                self.debug['found_topic_desc'] = False
         else:
-            self.matched_filters = find_matched_filters(self.extraction, self.vh.metadata_ranges)
+            self.logger.info(f"SessionID={self.session_id} [ONTOLOGY] Topics found for the given extraction={self.topic_ont_dict}")
+            if self.debug_flag:
+                topic_ont_results_msg = ""
+                # Iterate over the result dictionary and add as a string to post at the end
+                self.debug['topics'] = []
+                for topic, description in self.topic_ont_dict.items():
+                    self.debug['topics'].append({
+                        'topic': topic,
+                        'description': description,
+                    })
+
+    def set_filters(self):
+        self.matched_filters = find_matched_filters(f"{self.extraction} {', '.join(self.topic_slugs)}", self.vh.metadata_ranges)
         self.debug["matched_filters"] = self.matched_filters
         self.logger.info(f"SessionID={self.session_id}. [METADATA FILTERING] Filters matched in query={self.matched_filters}.")
 
     def has_filters(self):
         return bool(self.matched_filters)
-
 
     def find_explicit_citations(self):
         #todo: refactor into one linker call that gets parsed into two buckets
@@ -1921,6 +1980,9 @@ class StudySession:
 
     def set_debug_flag(self, flag: bool):
         self.debug_flag = flag
+
+    def set_graph_flag(self, flag: bool):
+        self.graph_flag = flag
 
     def set_infer_topics_flag(self, flag: bool):
         self.infer_topics_flag = flag
@@ -1935,6 +1997,9 @@ class StudySession:
         self._successful_requests += cb.successful_requests
         self._total_cost += cb.total_cost
         self._request_count += 1
+
+    def get_costs_as_string(self):
+        return f"Total cost: {self._total_cost}, Total tokens: {self._total_tokens}, Prompt tokens: {self._prompt_tokens}, Completion tokens: {self._completion_tokens}, Successful requests: {self._successful_requests}, Request count: {self._request_count}"
 
     def make_prediction(self, chain, query: str, action: str, ref_data: str = ''):
         """
@@ -2093,6 +2158,30 @@ class StudySession:
             self.proposal = ""
         return
 
+    def qa(self, query: str, ref_data: str):
+        '''
+        Executes a query against a language model chain, returning the response and token count.
+
+        This function interfaces with a chain of language models to perform a question-answering (QA) task.
+        It sends the provided query along with reference data to the model, captures both the textual response and the count of tokens used in the model's reply.
+        The token count helps in monitoring and managing usage relative to any constraints or limits.
+        Detailed logging is performed using an optional message ID for tracking and debugging purposes.
+
+        Parameters:
+        query (str): The query string to be processed by the QA model.
+        ref_data (str): Additional reference data that might be required by the model for generating the answer.
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+
+        Returns:
+        tuple: A tuple containing the model's response (str) and the token count (int) used in generating that response.
+
+        Example:
+        response, tok_count = vh.qa(query, ref_data, msgid)
+        '''
+
+        self.main_response = self.make_prediction(self.vh.chat_llm_chain_qa, query, "qa", ref_data)
+        return self.main_response
+
 
 class NoAnswerError(Exception):
     pass
@@ -2176,24 +2265,29 @@ class RankedDocuments:
 
 class SourceCollection:
     def __init__(self, study_session: StudySession, debug_flag: bool = False):
-        self.debug_flag = debug_flag
-        self.debug = {}
-        self.all_ranked_docs = None
-        self.final_reference_docs = None
-        self.all_primary_documents = None
-        self.ranked_secondary_documents = RankedDocuments()
-        self.ranked_primary_documents = RankedDocuments()
-        self.retrieval_set = None
-        self.retrieval_is_filtered = None
-        self.session = study_session
         self.vh = study_session.vh
+        self.session = study_session
+        self.logger = self.session.logger
         self.session_id = self.session.session_id
         self.matched_filters = self.session.matched_filters
         self.all_citations = self.session.all_citations
-        self.logger = self.session.logger
-        self.retrieve_documents()
 
-    def retrieve_documents(self):
+        self.debug_flag = debug_flag
+        self.debug = {}
+
+        self.all_primary_documents = None
+        self.selected_primary_docs = None
+        self.ranked_primary_documents = RankedDocuments()
+        self.selected_secondary_docs = None
+        self.ranked_secondary_documents = RankedDocuments()
+
+        self.all_ranked_docs = None
+        self.final_reference_docs = None
+        self.retrieval_set = None
+        self.retrieval_is_filtered = None
+        self.graph_retrieval_successful = False
+
+    def retrieve_with_semantic_search(self):
         self.retrieval_is_filtered = False
 
         if self.has_filters():
@@ -2203,35 +2297,52 @@ class SourceCollection:
             self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
             self.retrieval_is_filtered = bool(self.retrieval_set)
 
+
         # If no results are returned from semantic search with metadata filtering, do a simple semantic search
         if not self.retrieval_is_filtered:
             self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
 
-    def rank(self):
-        """
-        The entry-point ranking method for this class.
-        todo: the logic of this sorting needs work.
-        - Presentation form should be formed after ordering, not in the midst
-        - The logic of primary/secondary may be introduced too early
-        - The presence / absence of citations is handled in a messy way
-        - Is the presence of metadata filters handled cleanly?
-        todo: the reference to session attrs and methods is messy
-
-        """
         # todo: get this vh var local
         primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.vh.primary_source_filter)
 
-        # todo: experiment whether we get better results by doing these before primary/secondary splitting
         primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
-        selected_primary_docs = self.select_reference(primary_docs)
-        if selected_primary_docs:
-            self.ranked_primary_documents = self.sort_reference(selected_primary_docs, 'primary')
+        self.selected_primary_docs = self.select_reference(primary_docs)
 
         if not self.retrieval_is_filtered:
             secondary_docs = [d for d in self.retrieval_set if not primary_predicate(d)]
-            selected_secondary_docs = self.select_reference(secondary_docs)
-            if selected_secondary_docs:
-                self.ranked_secondary_documents = self.sort_reference(selected_secondary_docs, 'secondary')
+            self.selected_secondary_docs = self.select_reference(secondary_docs)
+
+    #todo: refactor graph_traversal_retriever
+    def retrieve_with_graph(self):
+        if self.all_citations:
+            sel_p_retrieval_res, tok_count = self.vh.graph_traversal_retriever(
+                screen_res=self.session.edited_query,
+                scripture_query=self.session.scripture_query,
+                enriched_query=self.session.enriched_query,
+                linker_results=self.all_citations,
+                filter_mode_nodes=None,
+                msg_id=self.session_id
+              )
+            self.session._total_tokens += tok_count  # Update token count.  todo: Other numbers won't be consistent until refactor.
+            self.graph_retrieval_successful = bool(sel_p_retrieval_res)
+            if not self.graph_retrieval_successful and self.debug_flag:
+                self.debug['graph_traversal_failed'] = True
+        elif self.debug_flag:
+            self.debug['graph_traversal_failed'] = True
+
+    def rank(self):
+        """
+        Sort the selected primary and secondary documents based on their relevance to the query.
+        """
+        if self.graph_retrieval_successful:
+            self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, None)
+
+        else:
+            if self.selected_primary_docs:
+                self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, 'primary')
+
+            if not self.retrieval_is_filtered and self.selected_secondary_docs:
+                self.ranked_secondary_documents = self.sort_reference(self.selected_secondary_docs, 'secondary')
 
     def merge(self):
         self.all_primary_documents = self.ranked_primary_documents.merge_linker_refs(self.all_citations) \
@@ -2242,6 +2353,9 @@ class SourceCollection:
                + self.ranked_secondary_documents.first_n(self.vh.num_secondary_citations)
         self.all_ranked_docs = self.all_primary_documents | self.ranked_secondary_documents
 
+    def is_empty(self):
+        return not self.final_reference_docs
+
     def as_docs(self) -> list[tuple[str, float]]:
         """
         Returns the final reference documents as a list of tuples, where each tuple contains a document URL and its relevance score.
@@ -2250,7 +2364,7 @@ class SourceCollection:
         """
         return self.final_reference_docs
 
-    def as_string(self):
+    def as_citations_string(self):
         citation_parts = []
         for n, (k, rel_score) in enumerate(self.final_reference_docs, 1):
             citation_parts.append(f"\n{n}. {self.all_ranked_docs.ref_dict[k]}")
@@ -2259,6 +2373,14 @@ class SourceCollection:
                 )
 
         return ''.join(citation_parts)
+
+    def as_reference_data_string(self):
+        ref_data_parts = []
+        for n, (k, rel_score) in enumerate(self.final_reference_docs, 1):
+            ref_data_parts.append(
+                f"\n #Reference {n}# {self.all_ranked_docs.data_dict[k]}... --Origin of this {self.all_ranked_docs.ref_dict[k]} \n")
+        return ''.join(ref_data_parts)
+
 
     def select_reference(self, retrieval_res):
         '''
@@ -2301,6 +2423,7 @@ class SourceCollection:
             selected_retrieval_res = []
         return selected_retrieval_res
 
+
     def sort_reference(self, retrieval_res, filter_mode: str | None = 'primary') -> RankedDocuments:
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
@@ -2328,9 +2451,11 @@ class SourceCollection:
 
         documents, semantic_similarity_scores = zip(*retrieval_res)
         # todo: this next method is producing a cross-product
-        sorted_docs, sorted_ranking_scores = self.rank_documents(documents,
-                                                  semantic_similarity_scores=semantic_similarity_scores,
-                                                  filter_mode=filter_mode)
+        sorted_docs, sorted_ranking_scores = self.rank_documents(
+            documents,
+            semantic_similarity_scores=semantic_similarity_scores,
+            filter_mode=filter_mode
+        )
 
         retrieval_res_ranked = list(zip(sorted_docs, sorted_ranking_scores))
         return self.merge_references_by_url(retrieval_res_ranked)
