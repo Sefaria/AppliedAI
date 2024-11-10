@@ -1011,6 +1011,7 @@ class VirtualHavruta:
                     self.chat_llm_chain_qa, query, "qa", msg_id, ref_data)
         return response, tok_count
 
+    #todo: move to StudySession
     def retrieve_situational_info(self, msg_id: str = ''):
         '''
         Retrieves and returns the current date and time as a formatted string, indicating the exact moment a question was asked.
@@ -1774,6 +1775,10 @@ class VirtualHavruta:
 class StudySession:
     def __init__(self, vh: VirtualHavruta):
 
+        self.infer_topics_flag = False
+        self.topic_slugs = None
+        self.situational_info = None
+        self.debug_flag = False
         self.source_collection = None
         self.formatted_sources = None
         self.all_citations = None
@@ -1806,8 +1811,86 @@ class StudySession:
 
         self.primary_citations = None
         self.secondary_citations = None
+        self.debug = {}
 
     # todo: classify costs by model used
+
+    def retrieve(self, query: str) -> SourceCollection:
+        self.original_query = query
+        self.ingest_query()
+        self.set_derivative_queries()
+        if self.infer_topics_flag:
+            self.infer_topics()
+        self.set_filters()
+        self.find_explicit_citations()    # Retrieve primary and secondary documents from linker api
+
+        # The source collection grabs session_id, matched_filters, and all_citations from self.
+        # todo: should that be passed more explicitly?
+        self.source_collection = SourceCollection(self, debug_flag=self.debug_flag)
+        self.source_collection.rank()
+        self.source_collection.merge()
+        return self.source_collection
+
+    def retrieve_and_generate(self, query: str):
+        response = {'answer': '', 'citations': []}
+        response["citations"] = self.retrieve(query).as_string()
+
+    def ingest_query(self):
+        self.original_query = self.original_query.strip()
+        self.logger.info(f"SessionID={self.session_id}. [INGESTION] Original query={self.original_query}")
+        # Handle possible adversarial attacks by checking the query content
+        detection, explanation = self.anti_attack(self.original_query)
+
+        # If detected, adapt the query, otherwise, edit the query
+        if "Y" in detection:
+            self.edited_query = self.adaptor(self.original_query)
+            self.logger.info(f"Caught attack. Adaptation result: {self.edited_query}")
+
+            if not self.edited_query or '@CANNOT-ADAPT@' in self.edited_query:
+                raise NoAnswerError("Adaptation failed")
+
+        else:
+            self.edited_query = self.editor(self.edited_query)
+
+        return
+
+    def set_derivative_queries(self):
+        self.optimizer(self.edited_query)
+        self.linker_query = f"{part_res(self.original_query)} {part_res(self.edited_query)}"
+        self.enriched_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.elaboration)} {part_res(self.proposal)} {part_res(self.quotation)}"
+        if self.quotation:
+            self.scripture_query = f"{part_res(self.quotation)} {part_res(self.extraction)}"
+        else:
+            self.scripture_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.proposal)}"
+
+    def infer_topics(self):
+        self.topic_slugs = self.vh.topic_ontology(self.extraction, self.session_id, True)
+
+    def set_filters(self):
+        if self.infer_topics_flag:
+            self.matched_filters = find_matched_filters(f"{self.extraction} {', '.join(self.topic_slugs)}", self.vh.metadata_ranges)
+        else:
+            self.matched_filters = find_matched_filters(self.extraction, self.vh.metadata_ranges)
+        self.debug["matched_filters"] = self.matched_filters
+        self.logger.info(f"SessionID={self.session_id}. [METADATA FILTERING] Filters matched in query={self.matched_filters}.")
+
+    def has_filters(self):
+        return bool(self.matched_filters)
+
+
+    def find_explicit_citations(self):
+        #todo: refactor into one linker call that gets parsed into two buckets
+        self.primary_citations = self.vh.retrieve_docs_linker(self.linker_query, self.enriched_query, self.session_id, 'primary')
+        self.secondary_citations = self.vh.retrieve_docs_linker(self.linker_query, self.enriched_query, self.session_id, 'secondary')
+        self.all_citations = self.primary_citations + self.secondary_citations
+        return
+
+    def set_debug_flag(self, flag: bool):
+        self.debug_flag = flag
+
+    def set_infer_topics_flag(self, flag: bool):
+        self.infer_topics_flag = flag
+
     def update_costs(self, cb):
         """
         cb: OpenAi Callback object
@@ -1918,8 +2001,7 @@ class StudySession:
         screen_res = vh.editor(query)
         """
         input_query = query or self.original_query
-        self.edited_query = self.make_prediction(self.vh.chat_llm_chain_editor, input_query, "EDITING")
-        return
+        return self.make_prediction(self.vh.chat_llm_chain_editor, input_query, "EDITING")
 
     def optimizer(self, query: Optional[str] = None):
         '''
@@ -1955,6 +2037,17 @@ class StudySession:
             self.quotation = opt_res_json['Quotation']
             self.challenge = opt_res_json['Challenge']
             self.proposal = opt_res_json['Potential-Directions']
+
+            #todo: This is repetative. Debug could be extracted from objects attrs when needed.
+            if self.debug_flag:
+                self.debug |= {
+                    'elaboration': self.elaboration,
+                    'challenge': self.challenge,
+                    'proposal': self.proposal,
+                    'quotes': self.quotation,
+                    'extraction': self.extraction,
+                }
+
         except Exception as e:
             self.logger.error(
                 f"SessionID={self.session_id}. [OPTIMIZATION] Error occurred during PROMPT OPTIMIZATION: {e}.")
@@ -1966,43 +2059,9 @@ class StudySession:
             self.proposal = ""
         return
 
-    def set_queries(self):
-        self.linker_query = f"{part_res(self.original_query)} {part_res(self.edited_query)}"
-        self.enriched_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.elaboration)} {part_res(self.proposal)} {part_res(self.quotation)}"
-        if self.quotation:
-            self.scripture_query = f"{part_res(self.quotation)} {part_res(self.extraction)}"
-        else:
-            self.scripture_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.proposal)}"
 
-    def find_explicit_citations(self):
-        #todo: refactor into one linker call that gets parsed into two buckets
-        self.primary_citations = self.vh.retrieve_docs_linker(self.linker_query, self.enriched_query, self.session_id, 'primary')
-        self.secondary_citations = self.vh.retrieve_docs_linker(self.linker_query, self.enriched_query, self.session_id, 'secondary')
-        self.all_citations = self.primary_citations + self.secondary_citations
-        return
-
-    def set_filters(self):
-        # was: matched_filters = find_matched_filters(f"{self.extraction} {', '.join(topic_slugs)}", self.vh.metadata_ranges)
-        self.matched_filters = find_matched_filters(self.extraction, self.vh.metadata_ranges)
-        self.logger.info(f"SessionID={self.session_id}. [METADATA FILTERING] Filters matched in query={self.matched_filters}.")
-
-    def has_filters(self):
-        return bool(self.matched_filters)
-
-    def search(self, query: str):
-        self.original_query = query
-        self.editor()
-        self.optimizer()
-        self.set_queries()
-        self.set_filters()
-        # self.find_explicit_citations()    # Retrieve primary and secondary documents from linker api
-
-        # The source collection grabs session_id, matched_filters, and all_citations from self.
-        # todo: should that be passed more explicitly?
-        self.source_collection = SourceCollection(self)
-        self.source_collection.rank()
-        self.source_collection.merge()
-        return self.source_collection
+class NoAnswerError(Exception):
+    pass
 
 
 class RankedDocuments:
@@ -2082,7 +2141,9 @@ class RankedDocuments:
 
 
 class SourceCollection:
-    def __init__(self, study_session: StudySession):
+    def __init__(self, study_session: StudySession, debug_flag: bool = False):
+        self.debug_flag = debug_flag
+        self.debug = {}
         self.all_ranked_docs = None
         self.final_reference_docs = None
         self.all_primary_documents = None
@@ -2098,17 +2159,12 @@ class SourceCollection:
         self.logger = self.session.logger
         self.retrieve_documents()
 
-    def has_filters(self):
-        return bool(self.matched_filters)
-
-    def has_citations(self):
-        return bool(self.all_citations)
-
     def retrieve_documents(self):
         self.retrieval_is_filtered = False
 
         if self.has_filters():
             metadata_filter = construct_db_filter(self.matched_filters)
+            self.debug["metadata_filter"] = metadata_filter
             self.logger.info(f"SessionID={self.session_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {self.session.scripture_query} and this metadata filter {metadata_filter}")
             self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
             self.retrieval_is_filtered = bool(self.retrieval_set)
@@ -2360,7 +2416,6 @@ class SourceCollection:
 
         return RankedDocuments(sorted_src_rel_dict, src_data_dict, src_ref_dict)
 
-
     def selector(self, query: str, ref_data: str):
         '''
         Based on the provided query and numbered reference data, select useful references using a chained language model, returning the selected indices and token count.
@@ -2466,6 +2521,12 @@ class SourceCollection:
                 f"SessionID={self.session_id}. [CLASSIFICATION] Result was set to 0. Error message is {e}.")
             ref_class = 0
         return ref_class
+
+    def has_filters(self):
+        return bool(self.matched_filters)
+
+    def has_citations(self):
+        return bool(self.all_citations)
 
     def is_primary_document(self, doc: Document) -> bool:
         '''
