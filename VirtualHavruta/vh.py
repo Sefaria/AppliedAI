@@ -8,6 +8,7 @@ import os
 import json
 import yaml
 import uuid6
+import hdate
 import numpy as np
 import pandas as pd
 from langchain.utils.math import cosine_similarity
@@ -1817,6 +1818,7 @@ class StudySession:
 
     def retrieve(self, query: str) -> SourceCollection:
         self.original_query = query
+        self.retrieve_situational_info()
         self.ingest_query()
         self.set_derivative_queries()
         if self.infer_topics_flag:
@@ -1834,6 +1836,38 @@ class StudySession:
     def retrieve_and_generate(self, query: str):
         response = {'answer': '', 'citations': []}
         response["citations"] = self.retrieve(query).as_string()
+
+    def retrieve_situational_info(self):
+        '''
+        Retrieves and returns the current date and time as a formatted string, indicating the exact moment a question was asked.
+
+        This function constructs a formatted message providing situational information based on the current date and time.
+        It logs this information for monitoring and debugging purposes using an optional message identifier.
+        The function is useful for adding context to logs, particularly in scenarios where the timing of operations is crucial.
+
+        Parameters:
+        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
+
+        Returns:
+        str: A formatted string that contains the day of the week, date, and exact time, prefixed with a descriptive label about the situational context.
+
+        Example:
+        "[Situational Info] The time of asking this question is Monday, 01/01/2023 12:00:00"
+        '''
+
+        #todo: This may be off by a day if the server time and user timezone differ enough at the wrong time of day
+        now = datetime.now()
+        h = hdate.HDate(now, hebrew=False) # Includes day of week
+        self.situational_info = f"[Situational Info] It is now {h}, ({now.strftime('%d/%m/%Y %H:%M:%S')}).  "
+
+        #todo: This will retrieve the Israel Parasha when Israel and the disapora differ
+        response = requests.get("https://www.sefaria.org/api/calendars", headers={"accept": "application/json"})
+        if response.status_code == 200:
+            data = response.json()
+            parasha = data["calendar_items"][0]
+            self.situational_info += f"The current Parasha is {parasha["displayValue"]["en"]} ({parasha["displayValue"]["he"]}), which is found in {parasha["ref"]}.  "
+
+        self.logger.info(f"SessionID={self.session_id}. [SITUATIONAL INFO] Retrieved current situation: {self.situational_info}")
 
     def ingest_query(self):
         self.original_query = self.original_query.strip()
