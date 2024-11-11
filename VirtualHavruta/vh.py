@@ -1783,7 +1783,7 @@ class StudySession:
         self.matched_topics_in_query = None
         self.expanded_extraction = None
         self.infer_topics_flag = False
-        self.topic_slugs = None
+        self.topic_slugs = []
         self.situational_info = None
         self.debug_flag = False
         self.source_collection = None
@@ -1826,6 +1826,7 @@ class StudySession:
         self.retrieve_situational_info()
         self.ingest_query()
         self.set_derivative_queries()
+        # todo: This takes a while and offers dubious value.  Refine.
         if self.infer_topics_flag:
             self.infer_topics()
         self.set_filters()
