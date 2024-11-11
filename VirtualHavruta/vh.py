@@ -2,7 +2,7 @@
 from __future__ import annotations
 import operator
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from time import sleep
 import os
 import json
@@ -106,8 +106,8 @@ class VirtualHavruta:
         self.metadata_ranges = load_selected_keys('./data/metadata_ranges.json', self.config["database"]["embed"]["metadata_fields"])
         self.topic_ranges = load_selected_keys('./data/metadata_ranges.json', self.config["database"]["embed"]["topic_fields"])
 
-    def new_study_session(self):
-        return StudySession(self)
+    def new_study_session(self, msgid: str = None, chat_callback: Optional[Callable] = None) -> StudySession:
+        return StudySession(self, msgid, chat_callback=chat_callback)
 
     def initialize_prompt_templates(self):
         '''
@@ -1775,8 +1775,9 @@ class VirtualHavruta:
 
 
 class StudySession:
-    def __init__(self, vh: VirtualHavruta):
-
+    def __init__(self, vh: VirtualHavruta, msgid: str = None, chat_callback: Optional[Callable] = None):
+        self.session_id = msgid or uuid6.uuid7().hex
+        self.chat = chat_callback or (lambda x: None)
         self.graph_flag = None
         self.main_response = None
         self.topic_ont_dict = None
@@ -1789,7 +1790,6 @@ class StudySession:
         self.source_collection = None
         self.formatted_sources = None
         self.all_citations = None
-        self.session_id = uuid6.uuid7().hex
         self.history = []  # Track all state changes
         self._current_state = {}
         self.vh = vh
@@ -1850,8 +1850,11 @@ class StudySession:
         response = {}
         self.source_collection = SourceCollection(self, debug_flag=self.debug_flag)
         if self.graph_flag:
+            self.chat("*I'm going to search for the answer in the knowledge graph.*")
             self.source_collection.retrieve_with_graph()
+        # todo: fix this intrusion into source_collection
         if not self.source_collection.graph_retrieval_successful:
+            self.chat("*I'm going to search for the answer in the database.*")
             self.source_collection.retrieve_with_semantic_search()
         self.source_collection.rank()
         self.source_collection.merge()
@@ -1924,6 +1927,7 @@ class StudySession:
 
             if not self.edited_query or '@CANNOT-ADAPT@' in self.edited_query:
                 raise NoAnswerError("Adaptation failed")
+            self.chat(f"*Umm...I'm reconsidering your question and for now I interpret it as: {self.edited_query}*")
 
         else:
             self.edited_query = self.editor(self.edited_query)
@@ -1938,6 +1942,13 @@ class StudySession:
             self.scripture_query = f"{part_res(self.quotation)} {part_res(self.extraction)}"
         else:
             self.scripture_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.proposal)}"
+        if self.debug:
+            self.chat("*Well, these are not the final response but merely some of my preliminary and tentative thoughts while I go on considering your question:*")
+            self.chat(part_res(self.elaboration))
+            self.chat(part_res(self.challenge))
+            self.chat(part_res(self.proposal))
+            self.chat(f"*Here are quotes potentially related to your query:* {self.quotation}")
+            self.chat( f"*And here are topics, authors, document categories, or era names potentially related to your query: {self.extraction}*")
 
     def infer_topics(self):
         self.topic_slugs = self.vh.topic_ontology(self.extraction, self.session_id, True)
@@ -1968,6 +1979,7 @@ class StudySession:
         self.matched_filters = find_matched_filters(f"{self.extraction} {', '.join(self.topic_slugs)}", self.vh.metadata_ranges)
         self.debug["matched_filters"] = self.matched_filters
         self.logger.info(f"SessionID={self.session_id}. [METADATA FILTERING] Filters matched in query={self.matched_filters}.")
+        self.chat(f"*Here are the matched filters: {self.matched_filters}.")
 
     def has_filters(self):
         return bool(self.matched_filters)

@@ -16,12 +16,14 @@ def create_logger(name='virtual-havruta'):
     logger.addHandler(stdout_handler)
     return logger
 
+
 def part_res(input_res, sep=''):
     if isinstance(input_res, list):
         input_res = ' '.join(input_res)
     if sep:
         return input_res.partition(sep)[2].strip()
     return input_res.strip()
+
 
 def min_max_scaling(data: Iterable, offset: float = 1e-09) -> list:
     """
