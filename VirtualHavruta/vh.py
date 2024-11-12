@@ -250,153 +250,6 @@ class VirtualHavruta:
                 res = ''
             return res, cb.total_tokens
 
-    # todo: deprecate in favor of StudySession
-    def anti_attack(self, query: str, msg_id: str = ''):
-        '''
-        Analyzes a query for potential attacks using a language model chain specialized in anti-attack tasks, returning the detection status, explanation, and token count.
-        
-        This function submits a query to an anti-attack model, which assesses the text for elements that might constitute an attack or harmful content.
-        The model's response is expected to include a detection status and an explanation, separated by a special delimiter.
-        If the parsing of the response fails, the function logs the error and defaults the detection to 'N' (No) with an empty explanation.
-        This ensures reliable operation even in cases of unexpected model output or processing errors.
-        
-        Parameters:
-        query (str): The query string to be analyzed for potential attacks.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        tuple: A tuple containing the detection status (str), an explanation (str), and the token count (int) used during the analysis.
-        
-        Raises:
-        Exception: Catches and logs any exception that occurs during response parsing, setting default values for the detection status and explanation.
-
-        Example:
-        detection, explanation, tok_count = vh.anti_attack(query, msgid)
-        '''
-        adv_res, tok_count = self.make_prediction(self.chat_llm_chain_anti_attack, query, "ANTI-ATTACK", msg_id)
-        try:
-            detection, explanation = adv_res.split('@SEP@')
-        except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. [Anti-Attack] Error occurred during attack detection: {e}.")
-            detection, explanation = 'N', ''
-        return detection, explanation, tok_count
-
-    # todo: deprecate in favor of StudySession
-    def adaptor(self, query: str, msg_id: str = ''):
-        '''
-        Processes a query using a language model chain optimized for adaptation tasks, returning the adapted result along with the token count.
-
-        This function sends a query to an adaptation-specific model, which modifies the query to fit particular contexts or requirements.
-        It retrieves the adapted text and the number of tokens used in the model's response.
-        The function is useful for tasks requiring contextual modifications or specific formatting.
-        It also logs each transaction with an optional message identifier, aiding in monitoring and debugging processes.
-        
-        Parameters:
-        query (str): The query string to be adapted by the model.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        tuple: A tuple containing the adapted text (str) and the token count (int) used in generating that adapted text.
-
-        Example:
-        screen_res, tok_count = vh.adaptor(query, msgid)
-        '''
-        adp_res, tok_count = self.make_prediction(self.chat_llm_chain_adaptor, query, "ADAPTATION", msg_id)
-        return adp_res, tok_count
-
-    # todo: deprecate in favor of StudySession
-    def editor(self, query: str, msg_id: str = ''):
-        '''
-        Performs editing on a given query using a language model chain optimized for editing tasks, returning the edited result along with the token count.
-
-        This function sends a query to an editing-optimized model, which processes and refines the text to improve clarity, style, or correctness.
-        The function captures the edited output and the count of tokens used by the model, facilitating usage tracking and evaluation.
-        It also logs the operation using an optional message identifier, enhancing traceability and assisting with debugging.
-        
-        Parameters:
-        query (str): The query string to be edited by the model.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        tuple: A tuple containing the edited text (str) and the token count (int) used in generating that edited text.
-
-        Example:
-        screen_res, tok_count = vh.editor(query, msgid)
-        '''
-        edit_res, tok_count = self.make_prediction(self.chat_llm_chain_editor, query, "EDITING", msg_id)
-        return edit_res, tok_count
-
-    # todo: deprecate in favor of StudySession
-    def optimizer(self, query: str, msg_id: str = ''):
-        '''
-        Optimizes a query using a chain of language models dedicated to prompt optimization, extracting various components from the optimization results.
-
-        This function submits a query to an optimization model, which processes the query and returns structured optimization results.
-        These results are expected to contain components such as translation, key concepts, elaboration, quotation, challenges, and potential directions.
-        The function decodes the JSON response, extracts these components, and returns them along with the token count used in the operation.
-        Errors during JSON processing are logged, and default values are used if an error occurs, ensuring the function remains robust across different scenarios.
-        
-        Parameters:
-        query (str): The query string to be optimized by the model.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        tuple: A tuple containing the translated query, extracted key concepts, elaboration details, any related quotations, challenges identified, potential directions proposed, and the total token count used during the optimization process.
-        
-        Raises:
-        Exception: Catches and logs any exception that occurs during the JSON parsing and sets all output components to empty strings as a fallback.
-
-        Example:
-        translation, extraction, elaboration, quotation, challenge, proposal, tok_count = vh.optimizer(screen_res, msgid)
-        '''
-        opt_res, tok_count = self.make_prediction(self.chat_llm_chain_optimization, query, "PROMPT OPTIMIZATION", msg_id)
-        try:
-            opt_res_json = json.loads(opt_res)
-            translation = opt_res_json['Translation']
-            extraction = opt_res_json['Key-Concepts']
-            elaboration = opt_res_json['Elaboration']
-            quotation = opt_res_json['Quotation']
-            challenge = opt_res_json['Challenge']
-            proposal = opt_res_json['Potential-Directions']
-        except Exception as e:
-            self.logger.error(f"MsgID={msg_id}. [OPTIMIZATION] Error occurred during PROMPT OPTIMIZATION: {e}.")
-            translation = extraction = elaboration = quotation = challenge = proposal = ''
-        return translation, extraction, elaboration, quotation, challenge, proposal, tok_count
-
-    def retrieve_docs(self, query: str, filter_mode: str='primary'):
-        '''
-        Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
-
-        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set.
-        The results are filtered by checking each document's metadata against a predefined set of source filters.
-        The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
-        
-        Parameters:
-        query (str): The query string used to search for relevant documents.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        filter_mode (str): The mode to filter the search results by 'primary' or 'secondary' to determine the relevance of the sources.
-        
-        Returns:
-        retrieval_res: A list of documents that meet the criteria of the specified filter mode, either as primary or secondary sources.
-        
-        Raises:
-        ValueError: If an invalid filter_mode is provided, an exception is raised to indicate the error.
-
-        Example:
-        primary_retrieval_result = vh.retrieve_docs(query, msgid, 'primary')
-        '''
-        # Convert primary_source_filter to a set for efficient lookup
-        retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(query, self.top_k)
-        # Filter the documents based on whether we're looking for primary or secondary sources
-        if filter_mode == 'primary':
-            predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.primary_source_filter)
-        elif filter_mode == 'secondary':
-            predicate = lambda doc: not any(s in doc[0].metadata['source'] for s in self.primary_source_filter)
-        else:
-            raise ValueError(f"Invalid filter_mode: {filter_mode}")
-        retrieval_res = list(filter(predicate, retrieved_docs))
-        return retrieval_res
-
     def retrieve_docs_unfiltered(self, query: str):
         '''
         Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
@@ -415,30 +268,6 @@ class VirtualHavruta:
         primary_retrieval_result = vh.retrieve_docs(query, msgid, 'primary')
         '''
         return self.neo4j_vector.similarity_search_with_relevance_scores(query, self.top_k)
-
-
-    def retrieve_primary_and_secondary_docs(self, query: str):
-        '''
-        Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
-
-        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set.
-        The results are filtered by checking each document's metadata against a predefined set of source filters.
-        The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
-
-        Parameters:
-        query (str): The query string used to search for relevant documents.
-
-        Returns:
-        retrieval_res: Two list of documents - primary and secondary sources.
-
-        Example:
-        primary_retrieval_result = vh.retrieve_docs(query, msgid, 'primary')
-        '''
-        # Convert primary_source_filter to a set for efficient lookup
-        retrieved_docs = self.neo4j_vector.similarity_search_with_relevance_scores(query, self.top_k)
-        # Filter the documents based on whether we're looking for primary or secondary sources
-        primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.primary_source_filter)
-        return [d for d in retrieved_docs if primary_predicate(d)], [d for d in retrieved_docs if not primary_predicate(d)]
 
     def retrieve_docs_metadata_filtering(self, query: str, metadata_filter: dict | None=None):
         '''
@@ -654,7 +483,7 @@ class VirtualHavruta:
             database_=self.config_kg_db["name"],)
         return [convert_node_to_doc(node) for node in nodes]
 
-    #todo: deprecate in favor of StudySession?
+    #todo: deprecate in favor of StudySession?  Still used in graph_traversal_retriever
     def select_reference(self, query: str, retrieval_res, msg_id: str = ''):
         '''
         Based on the provided query and retrieval_res, select useful references using a chained language model, returning the selected retrieval_res and token count.
@@ -700,108 +529,6 @@ class VirtualHavruta:
             tok_count = 0
 
         return selected_retrieval_res, tok_count
-
-    #todo: deprecated in favor of StudySession
-    def sort_reference(self, scripture_query: str, enriched_query: str, retrieval_res, filter_mode: str|None = 'primary', msg_id: str = ''):
-        '''
-        Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
-
-        This function processes a set of retrieval results, classifying each result for relevance and calculating a composite relevance score based on classification results, similarity scores, and, for primary references, PageRank scores.
-        It also consolidates results with the same URL to avoid duplication, ensuring that the most relevant and comprehensive content is retained.
-        The function logs each step for transparency and debugging purposes and returns dictionaries containing sorted relevance data, source data, and reference details, along with the total count of tokens used in processing.
-
-        Parameters:
-        scripture_query (str): The query string against which references are being sorted and classified.
-        enriched_query (str): The enriched query string used to retrieve documents.
-        retrieval_res (iterable): An iterable of tuples containing reference data objects and similarity scores.
-        filter_mode: set if all retrieval results are from either primary or secondary sources, set to None if both are present. Defaults to 'primary'.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-
-        Returns:
-        tuple: A tuple containing sorted source relevance dictionary, source data dictionary, source reference dictionary, and the total token count used during the process.
-
-        Notes:
-        The function is robust to variations in data and manages complex scenarios where multiple references may have the same URL but different content or sources. It effectively manages and logs all operations to ensure data integrity and traceability.
-
-        Example:
-                p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, tok_count = vh.sort_reference(
-                scripture_query=scripture_query,
-                enriched_query=enriched_query,
-                retrieval_res=sel_p_retrieval_res,
-                msg_id=msgid,
-                filter_mode=primary_filter_mode
-            )
-        '''
-        total_tokens = 0
-
-        documents, semantic_similarity_scores = zip(*retrieval_res)
-        sorted_docs, sorted_ranking_scores, token_count = self.rank_documents(documents,
-                                                                              enriched_query=enriched_query,
-                                                                              scripture_query=scripture_query,
-                                                                              semantic_similarity_scores=semantic_similarity_scores,
-                                                                              filter_mode=filter_mode,
-                                                                              msg_id=msg_id)
-        total_tokens += token_count
-
-        retrieval_res_ranked = list(zip(sorted_docs, sorted_ranking_scores))
-        sorted_src_rel_dict, src_data_dict, src_ref_dict = self.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
-        return sorted_src_rel_dict, src_data_dict, src_ref_dict, total_tokens
-
-    #todo: deprecated in favor of StudySession
-    def merge_references_by_url(self, retrieval_res: list[tuple[Document, float]], msg_id: str = '') -> tuple[dict, dict, dict]:
-        '''
-        Merge chunks with the same URL.
-
-        This can occur for two reasons:
-        1. Different graph nodes with the same URL.
-        2. The same graph node split into multiple chunks.
-
-        Parameters:
-        retrieval_res : list
-            A list of (document, ranking_score) tuples.
-        msg_id : str, optional
-            Slack message ID, by default "".
-
-        Returns:
-        tuple
-            A tuple containing sorted source relevance dictionary, source data dictionary, and source reference dictionary.
-
-        Example:
-        sorted_src_rel_dict, src_data_dict, src_ref_dict = vh.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
-        '''
-        src_data_dict = {}
-        src_ref_dict = {}
-        src_rel_dict = {}
-        # Iterate over each item in the retrieval results
-        for (d, rel_score) in retrieval_res:
-            # If the URL is not already in src_data_dict, add all reference information
-            if d.metadata["url"] not in src_data_dict:
-                src_data_dict[d.metadata["url"]] = d.page_content
-                src_ref_dict[d.metadata["url"]] = d.metadata["source"]
-                src_rel_dict[d.metadata["url"]] = rel_score
-            else:
-                # If the URL is already present, handle different versions or sources with the same URL
-                existing_content = src_data_dict[d.metadata["url"]]
-                # Concatenate page content for the same URL
-                src_data_dict[d.metadata["url"]] = "...".join([existing_content, d.page_content])
-
-                # Avoid duplicate source listings by separating with a pipe "|"
-                existing_ref = src_ref_dict[d.metadata["url"]]
-                existing_ref_list = existing_ref.split(" | ")
-                if d.metadata["source"] not in existing_ref_list:
-                    src_ref_dict[d.metadata["url"]] = " | ".join([existing_ref, d.metadata["source"]])
-
-                # Update the relevance score with the maximum score between existing and new
-                existing_rel_score = src_rel_dict[d.metadata["url"]]
-                src_rel_dict[d.metadata["url"]] = max(existing_rel_score, rel_score)
-
-        # Sort the source relevance dictionary based on scores in descending order
-        sorted_src_rel_dict = dict(
-            sorted(src_rel_dict.items(), key=operator.itemgetter(1), reverse=True)
-        )
-        self.logger.info(f"MsgID={msg_id}. [MERGE REFERENCE] sorted_src_rel_dict={sorted_src_rel_dict}, src_data_dict={src_data_dict}, src_ref_dict={src_ref_dict}.")
-        # Return the sorted source relevance dictionary, source data dictionary, source reference dictionary, and token count
-        return sorted_src_rel_dict, src_data_dict, src_ref_dict
 
     #todo: deprecated in favor of StudySession
     def selector(self, query: str, ref_data: str, msg_id: str = ""):
@@ -878,68 +605,6 @@ class VirtualHavruta:
             ref_class = 0
         return ref_class, tok_count
 
-    def generate_ref_str(self, sorted_src_rel_dict, src_data_dict, src_ref_dict, msg_id: str = '', ref_mode: str = 'primary', n_citation_base: int = 0, is_linker_search: bool = False) -> str:
-        '''
-        Constructs formatted reference strings and citation lists based on the source relevance and data dictionaries, with specific handling for primary and secondary references.
-        
-        This function dynamically generates reference content and citation indices from sorted relevance data, differentiated by primary and secondary modes.
-        It assembles detailed reference strings, citation lists, and deep links for secondary references if applicable.
-        The function allows for continuation of citation numbering from a specified base, which is useful in documents where references span multiple sections or components.
-        
-        Parameters:
-        sorted_src_rel_dict (dict): A dictionary sorted by relevance, mapping source identifiers to their relevance scores.
-        src_data_dict (dict): A dictionary mapping source identifiers to their data content.
-        src_ref_dict (dict): A dictionary mapping source identifiers to their reference details.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        ref_mode (str): Mode of reference; can be 'primary' or 'secondary'. This affects the starting citation number and how citations are processed.
-        n_citation_base (int): The starting index for citations, which is only used in 'secondary' mode.
-        
-        Returns:
-        tuple: A tuple containing strings for the concatenated reference data and citations, a list of deep links for secondary references, and the final citation index used.
-        
-        Notes:
-        The function logs details of the reference processing for tracking and debugging, enhancing traceability and accountability in system operations involving reference data management.
-
-        Example:
-        example = vh.generate_ref_str(p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, msgid, 'primary')
-        '''
-        # Determine the starting citation number and how many citations to include
-        n_citation_base = 0 if ref_mode == 'primary' else n_citation_base
-        if is_linker_search:
-            num_citations = self.num_primary_citations_linker if ref_mode == 'primary' else self.num_secondary_citations_linker
-        else:
-            num_citations = self.num_primary_citations if ref_mode == 'primary' else self.num_secondary_citations
-
-        # Lists to hold parts of the final strings
-        ref_data_parts = []
-        citation_parts = []
-        deeplinks = []
-        n_citation = 0
-
-        # we can trust sorted_src_rel_dict to be in order, because of the order of insert
-        # Process only the needed citations
-        for n, (k, rel_score) in enumerate(sorted_src_rel_dict.items()):
-            if num_citations > 0 and n >= num_citations:
-                break
-
-            n_citation = n_citation_base + n + 1
-            ref_data_parts.append(f"\n #Reference {n_citation}# {src_data_dict[k]}... --Origin of this {src_ref_dict[k]} \n")
-            citation_parts.append(f"\n{n_citation}. {src_ref_dict[k]}")
-
-            # Additional actions for secondary references
-            if ref_mode == 'secondary':
-                deeplinks.append(k)
-
-            self.logger.info(
-                    f"MsgID={msg_id}. [GENERATE REFERENCE STRING] Included this reference for {ref_mode} references: {k}. Relevance score = {sorted_src_rel_dict[k]}."
-                )
-
-        # Join the parts into final strings
-        conc_ref_data = ''.join(ref_data_parts)
-        citations = ''.join(citation_parts)
-
-        return conc_ref_data, citations, deeplinks, n_citation
-
     def generate_kg_deeplink(self, deeplinks, msg_id: str = ''):
         '''
         Generates a Knowledge Graph (KG) deep link URL by concatenating up to the first three secondary reference URLs provided.
@@ -987,56 +652,6 @@ class VirtualHavruta:
             neo4j_deeplink = ""
             self.logger.info(f"MsgID={msg_id}. [KG DEEP LINK] Empty KG deep link for secondary references.")
         return neo4j_deeplink
-
-    #todo: deprecated in favor of StudySession
-    def qa(self, query: str, ref_data: str, msg_id: str = ''):
-        '''
-        Executes a query against a language model chain, returning the response and token count.
-
-        This function interfaces with a chain of language models to perform a question-answering (QA) task. 
-        It sends the provided query along with reference data to the model, captures both the textual response and the count of tokens used in the model's reply. 
-        The token count helps in monitoring and managing usage relative to any constraints or limits.
-        Detailed logging is performed using an optional message ID for tracking and debugging purposes.
-        
-        Parameters:
-        query (str): The query string to be processed by the QA model.
-        ref_data (str): Additional reference data that might be required by the model for generating the answer.
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        tuple: A tuple containing the model's response (str) and the token count (int) used in generating that response.
-
-        Example:
-        response, tok_count = vh.qa(query, ref_data, msgid)
-        '''
-        response, tok_count = self.make_prediction(
-                    self.chat_llm_chain_qa, query, "qa", msg_id, ref_data)
-        return response, tok_count
-
-    #todo: move to StudySession
-    def retrieve_situational_info(self, msg_id: str = ''):
-        '''
-        Retrieves and returns the current date and time as a formatted string, indicating the exact moment a question was asked.
-
-        This function constructs a formatted message providing situational information based on the current date and time.
-        It logs this information for monitoring and debugging purposes using an optional message identifier.
-        The function is useful for adding context to logs, particularly in scenarios where the timing of operations is crucial.
-        
-        Parameters:
-        msg_id (str, optional): A message identifier used for logging purposes; defaults to an empty string.
-        
-        Returns:
-        str: A formatted string that contains the day of the week, date, and exact time, prefixed with a descriptive label about the situational context.
-        
-        Example:
-        "[Situational Info] The time of asking this question is Monday, 01/01/2023 12:00:00"
-        '''
-        now = datetime.now()
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        day_of_week = now.weekday()
-        situ_info = f"[Situational Info] The time of asking this question is {days[day_of_week]}, {now.strftime('%d/%m/%Y %H:%M:%S')}."
-        self.logger.info(f"MsgID={msg_id}. [SITUATIONAL INFO] Retrieved current situation: {situ_info}")
-        return situ_info
 
     def query_sefaria_linker(self, text_title="", text_body="", with_text=1, debug=0, max_segments=20, msg_id: str = ''):
         '''
@@ -1154,77 +769,6 @@ class VirtualHavruta:
         traverse(json_input)
         self.logger.info(f"MsgID={msg_id}. [LINKER RETRIEVAL] Sefaria linker document retrieval results: {results}")
         return results
-
-    #todo: move to SourceCollection
-    def merge_linker_refs(self, retrieved_docs: list, p_sorted_src_rel_dict: dict, p_src_data_dict: dict, p_src_ref_dict: dict, msg_id: str = ''):
-        """
-        Merges new linker reference results into existing sorted source relevance dictionaries,
-        data dictionaries, and reference dictionaries.
-
-        This function is responsible for ensuring that the newly retrieved reference data from the
-        Sefaria Linker is correctly integrated with existing reference data, maintaining consistency and
-        accuracy across updates. Atomicity of updates is checked to ensure all updates occur simultaneously
-        if all conditions are met.
-
-        Parameters:
-            page_content_total (list): Contains dictionaries with page content and metadata including URL and text.
-            p_sorted_src_rel_dict (dict): Pre-existing sorted source relevance dictionary to be updated.
-            p_src_data_dict (dict): Pre-existing source data dictionary that maps URLs to text data.
-            p_src_ref_dict (dict): Pre-existing source reference dictionary that maps URLs to reference details.
-
-        Returns:
-            tuple: Updated dictionaries (p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict) after merging new references.
-            If merging is not succesful, original value is returned.
-
-        Example:
-        p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict = vh.merge_linker_refs(retrieved_docs, p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict, msgid)
-        """
-
-        #iterating each document in reverse order
-        for document in reversed(retrieved_docs):
-
-            # Extract necessary data to be written and to be checked
-            #Extracting the URL
-            new_url = 'https://www.sefaria.org/' + document['url'] if document['url'] else None
-            #Extracting the page_rank score for sorting
-            pr_score = float(document['page_rank']) if document['page_rank'] else None
-            #Extracting the Category
-            new_category = document['primaryCategory'] if document['primaryCategory'] else None
-            #Extracting the Reference Part
-            new_reference_part = document['url'] if document['url'] else None
-            new_ref = f"Reference: {new_reference_part}. Version Title: -, Document Category: {new_category}, URL: {new_url}"
-            #Extracting the english text
-            new_text = ' '.join(document['en']) if document['en'] else None
-
-            # Update sorted source relevance dictionary if necessary fields are satisfied
-            if new_reference_part and pr_score and new_category and new_text:
-                # Commit changes if fields are satisfied
-                if new_url not in p_sorted_src_rel_dict:
-                    p_sorted_src_rel_dict = {new_url: pr_score, **p_sorted_src_rel_dict}
-                else:
-                    p_sorted_src_rel_dict[new_url] = pr_score
-
-                if new_url not in p_src_ref_dict:
-                    p_src_ref_dict = {new_url: new_ref, **p_src_ref_dict}
-                else:
-                    if new_ref not in p_src_ref_dict[new_url]:
-                        p_src_ref_dict[new_url] += " | " + new_ref
-
-                if new_url not in p_src_data_dict:
-                    p_src_data_dict = {new_url: new_text, **p_src_data_dict}
-                else:
-                    if new_text not in p_src_data_dict[new_url]:
-                        p_src_data_dict[new_url] += "..." + new_text
-
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE SUCCESSFUL] Necessary fields are satisfied for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
-            else:
-                self.logger.info(f"MsgID={msg_id}. [LINKER UPDATE FAILED] Necessary fields are empty for this reference: ----new_reference_part: {new_reference_part} ----pr_score: {pr_score} ----new_category: {new_category} ----new_text: {new_text}")
-
-        #sorting it by page rank score
-        p_sorted_src_rel_dict = dict(sorted(p_sorted_src_rel_dict.items(), key=lambda item: item[1], reverse=True))
-        self.logger.info(f"MsgID={msg_id}. [FINAL LINKER REFERENCE MERGE OUTPUT] ----p_sorted_src_rel_dict: {p_sorted_src_rel_dict} ----p_src_data_dict: {p_src_data_dict} ----p_src_ref_dict: {p_src_ref_dict}")
-
-        return p_sorted_src_rel_dict, p_src_data_dict, p_src_ref_dict
 
     def topic_ontology(self, extraction: str = '', msgid: str = '', slugs_mode: bool = False):
         '''
@@ -1497,7 +1041,7 @@ class VirtualHavruta:
         seed_chunks: list[Document] = self.get_chunks_corresponding_to_nodes(seeds, msg_id=msg_id)
         return seed_chunks
 
-    # todo: deprecated in favor or StudySession
+    # todo: deprecated in favor or StudySession.  Still used by Graph Traversal Retriever
     def rank_documents(self, chunks: list[Document], enriched_query: str, scripture_query: str|None=None, semantic_similarity_scores: list[float]|None = None,
                               filter_mode: str|None = None, msg_id: str = '') -> tuple[list[Document], list[float], int]:
         '''
@@ -1821,6 +1365,9 @@ class StudySession:
         self.debug = {}
 
     # todo: classify costs by model used
+
+    def mark_as_eval(self):
+        self.session_id = "eval_" + self.session_id
 
     def _setup(self):
         self.retrieve_situational_info()
