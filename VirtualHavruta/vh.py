@@ -1405,13 +1405,14 @@ class StudySession:
             self.source_collection.retrieve_with_semantic_search()
         self.source_collection.rank()
         self.source_collection.merge()
-        citations_string = self.source_collection.as_citations_string()
-        ref_data = self.source_collection.as_reference_data_string() + f"\nAd-hoc supplementary information: [Situational Context] {self.situational_info} [Tentative Translation in English] {self.translation} [Thoughts, Challenges, and Potential Ways to Answer] {self.elaboration} {self.challenge} {self.proposal} [Related Topics in Sefaria Database] {self.topic_ont_dict}"
-
-        # Formulate the main response based on the combined reference data
-        main_response = self.qa(self.edited_query, ref_data)
-
         if not self.source_collection.is_empty():
+
+            citations_string = self.source_collection.as_citations_string()
+            ref_data = self.source_collection.as_reference_data_string() + f"\nAd-hoc supplementary information: [Situational Context] {self.situational_info} [Tentative Translation in English] {self.translation} [Thoughts, Challenges, and Potential Ways to Answer] {self.elaboration} {self.challenge} {self.proposal} [Related Topics in Sefaria Database] {self.topic_ont_dict}"
+
+            # Formulate the main response based on the combined reference data
+            main_response = self.qa(self.edited_query, ref_data)
+
             if "@IRRELEVANT-SOURCE@" in main_response:
                 final_msg = part_res(main_response, '@IRRELEVANT-SOURCE@')
                 self.logger.warning(f"SessionID={self.session_id}. Model found irrelevant references!")
@@ -1420,6 +1421,7 @@ class StudySession:
         else:
             # If no citations are available, inform the user
             final_msg = "At the moment I couldn't find directly relevant information in my database. I appreciate your understanding."
+            citations_string = "No Relevant References"
 
         self.logger.info(f"SessionID={self.session_id}. [FINAL RESPONSE] {final_msg}")
         self.logger.info(f"SessionID={self.session_id}. {self.get_costs_as_string()}")
@@ -1482,7 +1484,7 @@ class StudySession:
         return
 
     def set_derivative_queries(self):
-        self.optimizer(self.edited_query)
+        self.optimizer(f"{self.edited_query} {self.situational_info}")
         self.linker_query = f"{part_res(self.original_query)} {part_res(self.edited_query)}"
         self.enriched_query = f"{part_res(self.translation)} {part_res(self.extraction)} {part_res(self.elaboration)} {part_res(self.proposal)} {part_res(self.quotation)}"
         if self.quotation:
@@ -1526,7 +1528,7 @@ class StudySession:
         self.matched_filters = find_matched_filters(f"{self.extraction} {', '.join(self.topic_slugs)}", self.vh.metadata_ranges)
         self.debug["matched_filters"] = self.matched_filters
         self.logger.info(f"SessionID={self.session_id}. [METADATA FILTERING] Filters matched in query={self.matched_filters}.")
-        self.chat(f"*Here are the matched filters: {self.matched_filters}.")
+        self.chat(f"*Here are the matched filters: {self.matched_filters}*.")
 
     def has_filters(self):
         return bool(self.matched_filters)
@@ -1941,7 +1943,6 @@ class SourceCollection:
                 f"\n #Reference {n}# {self.all_ranked_docs.data_dict[k]}... --Origin of this {self.all_ranked_docs.ref_dict[k]} \n")
         return ''.join(ref_data_parts)
 
-
     def select_reference(self, retrieval_res):
         '''
         todo: rename to something like filter_references_with_llm?
@@ -1965,6 +1966,8 @@ class SourceCollection:
         seed_chunks = vh.select_reference(enriched_query, seed_chunks, msg_id=msg_id)
         '''
 
+        if not retrieval_res:
+            return []
         try:
             # Construct reference data string
             conc_ref_data = ''
