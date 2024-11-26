@@ -10,19 +10,18 @@ import yaml
 import uuid6
 import hdate
 import numpy as np
-import pandas as pd
 from langchain.utils.math import cosine_similarity
 from langchain_core.documents import Document
 # Import custom langchain modules for NLP operations and vector search
 from langchain_community.vectorstores import Neo4jVector
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain.chains import LLMChain
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
 import requests
 import neo4j
+import langsmith as ls
+from langsmith import traceable
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
     min_max_scaling, part_res, find_matched_filters, construct_db_filter, load_selected_keys, merge_topics
@@ -145,7 +144,8 @@ class VirtualHavruta:
             create_prompt_template("qa", "default", ref_mode=True) returns a `ChatPromptTemplate` object with a system message from the 'qa' category and a human message template that includes reference data.
         '''
         system_message = SystemMessage(content=self.prompts[category][template])
-        human_template = f"Question: {{human_input}}{' Reference Data: {ref_data}' if ref_mode else ''}."
+        human_template = "Question: {human_input}" if not ref_mode \
+            else "Question: {human_input}\nReference Data: {ref_data}."
         return ChatPromptTemplate.from_messages([
             system_message,
             HumanMessagePromptTemplate.from_template(human_template)
@@ -194,9 +194,9 @@ class VirtualHavruta:
         '''
         for suffix in suffixes:
             setattr(self, f"chat_llm_chain_{suffix}",
-                    self.create_llm_chain(model, getattr(self, f"prompt_{suffix}")))
+                    self.create_llm_chain(model, getattr(self, f"prompt_{suffix}"), suffix))
 
-    def create_llm_chain(self, llm, prompt_template):
+    def create_llm_chain(self, llm, prompt_template, name: str = ''):
         '''
         Creates and returns an instance of a language model chain configured with a specified language model and prompt template.
         
@@ -214,7 +214,8 @@ class VirtualHavruta:
         Example:
         create_llm_chain(model, getattr(self, f"prompt_{suffix}")))
         '''
-        return LLMChain(llm=llm, prompt=prompt_template, verbose=False)
+        chain = prompt_template | llm
+        return chain.with_config({"run_name": name})
 
     #todo: deprecate in favor of StudySession.make_prediction method
     def make_prediction(self, chain, query: str, action: str, msg_id: str = '', ref_data: str = ''):
@@ -241,9 +242,9 @@ class VirtualHavruta:
         Example:
         make_prediction(self.chat_llm_chain_anti_attack, query, "ANTI-ATTACK", msg_id)
         '''
-        with get_openai_callback() as cb:
+        with (get_openai_callback() as cb):
             try:
-                res = chain.predict(human_input=query, ref_data=ref_data) if ref_data else chain.predict(human_input=query)
+                res = chain.invoke({"human_input":query, "ref_data":ref_data}) if ref_data else chain.invoke({"human_input":query})
                 self.logger.info(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action}. Query={query}. Reference data={ref_data}. Result={res}.")
             except Exception as e:
                 self.logger.error(f"MsgID={msg_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action} but failed. Error is {e}.")
@@ -1379,6 +1380,11 @@ class StudySession:
         self.set_filters()
         self.find_explicit_citations()    # Retrieve primary and secondary documents from linker api
 
+    @traceable(
+        run_type="chain",
+        name="Retrieve",
+        project_name="Retrieve",
+    )
     def retrieve(self, query: str) -> SourceCollection:
         self.original_query = query
         self._setup()
@@ -1391,6 +1397,11 @@ class StudySession:
         self.source_collection.merge()
         return self.source_collection
 
+    @traceable(
+        run_type="chain",
+        name="Retrieve and Generate",
+        project_name="Retrieve and Generate",
+    )
     def retrieve_and_generate(self, query: str):
         self.original_query = query
         self._setup()
@@ -1585,8 +1596,7 @@ class StudySession:
 
         with get_openai_callback() as cb:
             try:
-                res = chain.predict(human_input=query, ref_data=ref_data) if ref_data else chain.predict(
-                    human_input=query)
+                res = chain.invoke({"human_input": query, "ref_data": ref_data}) if ref_data else chain.invoke({"human_input": query})
                 self.logger.info(
                     f"SessionID={self.session_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action}. Query={query}. Reference data={ref_data}. Result={res}.")
             except Exception as e:
@@ -1594,7 +1604,7 @@ class StudySession:
                     f"SessionID={self.session_id}. [INFERENCE] Spent {cb.total_tokens} tokens for {action} but failed. Error is {e}.")
                 res = ''
             self.update_costs(cb)
-            return res
+            return res.content
 
     def anti_attack(self, query: Optional[str] = None):
         '''
@@ -1750,6 +1760,9 @@ class NoAnswerError(Exception):
 
 
 class RankedDocuments:
+    """
+    sorted source relevance dictionary, source data dictionary, and source reference dictionary.
+    """
     def __init__(self, rel_dict: dict | None = None, data_dict: dict | None = None, ref_dict: dict | None = None):
         self.rel_dict = rel_dict or {}
         self.data_dict = data_dict or {}
@@ -1760,6 +1773,15 @@ class RankedDocuments:
 
     def __or__(self, other: RankedDocuments) -> RankedDocuments:
         return self.union(other)
+
+    def as_langsmith_docs(self):
+        return [
+            {
+                "page_content": self.data_dict[k],
+                "type": "Document",
+                "metadata": {"score": v, "url": k, "reference": self.ref_dict[k]}
+            }
+        for k, v in self.rel_dict]
 
     def first_n(self, n: int) -> list[tuple[str, float]]:
         """
@@ -1849,6 +1871,34 @@ class SourceCollection:
         self.retrieval_is_filtered = None
         self.graph_retrieval_successful = False
 
+    @staticmethod
+    def _convert_docs(ds: list[tuple[Document, float]]) -> list[dict]:
+        """ Convert docs as retrieved into a format suitable for Langsmith
+        Input format is a list of tuples, where each tuple contains a document and its relevance score.
+        """
+        return [
+          {
+              "page_content": d[0].page_content,
+              "type": "Document",
+              "metadata": d[0].metadata | {"score": d[1]}
+          }
+          for d in ds
+        ]
+
+    @staticmethod
+    def _convert_str_list(ds: list[tuple[str, float]]) -> list[dict]:
+        """ Convert strings as processed into a format suitable for Langsmith
+        Input format is a list of tuples, where each tuple contains a document and its relevance score.
+        """
+        return [
+          {
+              "page_content": d[0],
+              "type": "Document",
+              "metadata": {"score": d[1]}
+          }
+          for d in ds
+        ]
+
     def retrieve_with_semantic_search(self):
         self.retrieval_is_filtered = False
 
@@ -1856,23 +1906,32 @@ class SourceCollection:
             metadata_filter = construct_db_filter(self.matched_filters)
             self.debug["metadata_filter"] = metadata_filter
             self.logger.info(f"SessionID={self.session_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {self.session.scripture_query} and this metadata filter {metadata_filter}")
-            self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
+            with ls.trace("Retrieval - Filtered", "retriever") as rt:
+                self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
+                rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
             self.retrieval_is_filtered = bool(self.retrieval_set)
 
 
         # If no results are returned from semantic search with metadata filtering, do a simple semantic search
         if not self.retrieval_is_filtered:
-            self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
+            with ls.trace("Retrieval - Unfiltered", "retriever") as rt:
+                self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
+                rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
+
 
         # todo: get this vh var local
         primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.vh.primary_source_filter)
 
-        primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
-        self.selected_primary_docs = self.select_reference(primary_docs)
+        with ls.trace("Selection - Primary", "retriever") as rt:
+            primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
+            self.selected_primary_docs = self.select_reference(primary_docs)
+            rt.end(outputs={"output": self._convert_docs(self.selected_primary_docs)})
 
         if not self.retrieval_is_filtered:
-            secondary_docs = [d for d in self.retrieval_set if not primary_predicate(d)]
-            self.selected_secondary_docs = self.select_reference(secondary_docs)
+            with ls.trace("Selection - Secondary", "retriever") as rt:
+                secondary_docs = [d for d in self.retrieval_set if not primary_predicate(d)]
+                self.selected_secondary_docs = self.select_reference(secondary_docs)
+                rt.end(outputs={"output": self._convert_docs(self.selected_secondary_docs)})
 
     #todo: refactor graph_traversal_retriever
     def retrieve_with_graph(self):
@@ -1897,23 +1956,33 @@ class SourceCollection:
         Sort the selected primary and secondary documents based on their relevance to the query.
         """
         if self.graph_retrieval_successful:
-            self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, None)
+            with ls.trace("Ranking - Graph", "retriever") as rt:
+                self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, None)
+                rt.end(outputs={"output": self.ranked_primary_documents.as_langsmith_docs()})
+
+
 
         else:
             if self.selected_primary_docs:
-                self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, 'primary')
+                with ls.trace("Ranking - Primary", "retriever") as rt:
+                    self.ranked_primary_documents = self.sort_reference(self.selected_primary_docs, 'primary')
+                    rt.end(outputs={"output": self.ranked_primary_documents.as_langsmith_docs()})
 
             if not self.retrieval_is_filtered and self.selected_secondary_docs:
-                self.ranked_secondary_documents = self.sort_reference(self.selected_secondary_docs, 'secondary')
+                with ls.trace("Ranking - Secondary", "retriever") as rt:
+                    self.ranked_secondary_documents = self.sort_reference(self.selected_secondary_docs, 'secondary')
+                    rt.end(outputs={"output": self.ranked_secondary_documents.as_langsmith_docs()})
 
     def merge(self):
-        self.all_primary_documents = self.ranked_primary_documents.merge_linker_refs(self.all_citations) \
-            if self.has_citations() \
-            else self.ranked_primary_documents
+        with ls.trace("Ranked Retrieval", "retriever") as rt:
+            self.all_primary_documents = self.ranked_primary_documents.merge_linker_refs(self.all_citations) \
+                if self.has_citations() \
+                else self.ranked_primary_documents
 
-        self.final_reference_docs = self.all_primary_documents.first_n(self.vh.num_primary_citations) \
-               + self.ranked_secondary_documents.first_n(self.vh.num_secondary_citations)
-        self.all_ranked_docs = self.all_primary_documents | self.ranked_secondary_documents
+            self.final_reference_docs = self.all_primary_documents.first_n(self.vh.num_primary_citations) \
+                   + self.ranked_secondary_documents.first_n(self.vh.num_secondary_citations)
+            self.all_ranked_docs = self.all_primary_documents | self.ranked_secondary_documents
+            rt.end(outputs={"output": self._convert_str_list(self.final_reference_docs)})
 
     def is_empty(self):
         return not self.final_reference_docs
@@ -1943,7 +2012,7 @@ class SourceCollection:
                 f"\n #Reference {n}# {self.all_ranked_docs.data_dict[k]}... --Origin of this {self.all_ranked_docs.ref_dict[k]} \n")
         return ''.join(ref_data_parts)
 
-    def select_reference(self, retrieval_res):
+    def select_reference(self, retrieval_res) -> list:
         '''
         todo: rename to something like filter_references_with_llm?
         Based on the provided query and retrieval_res, select useful references using a chained language model, returning the selected retrieval_res and token count.
@@ -1986,7 +2055,6 @@ class SourceCollection:
             selected_retrieval_res = []
         return selected_retrieval_res
 
-
     def sort_reference(self, retrieval_res, filter_mode: str | None = 'primary') -> RankedDocuments:
         '''
         Sorts and processes retrieval results for references based on their relevance to a given query, considering both primary and secondary filtering modes.
@@ -2013,7 +2081,6 @@ class SourceCollection:
         '''
 
         documents, semantic_similarity_scores = zip(*retrieval_res)
-        # todo: this next method is producing a cross-product
         sorted_docs, sorted_ranking_scores = self.rank_documents(
             documents,
             semantic_similarity_scores=semantic_similarity_scores,
@@ -2093,16 +2160,11 @@ class SourceCollection:
         Parameters:
         retrieval_res : list
             A list of (document, ranking_score) tuples.
-        msg_id : str, optional
-            Slack message ID, by default "".
 
         Returns:
-        tuple
-            A tuple containing sorted source relevance dictionary, source data dictionary, and source reference dictionary.
-
-        Example:
-        sorted_src_rel_dict, src_data_dict, src_ref_dict = vh.merge_references_by_url(retrieval_res_ranked, msg_id=msg_id)
+            RankedDocuments: A RankedDocuments object containing the merged results.
         '''
+
         src_data_dict = {}
         src_ref_dict = {}
         src_rel_dict = {}
