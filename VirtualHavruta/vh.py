@@ -1781,7 +1781,7 @@ class RankedDocuments:
                 "type": "Document",
                 "metadata": {"score": v, "url": k, "reference": self.ref_dict[k]}
             }
-        for k, v in self.rel_dict]
+            for k, v in self.rel_dict.items()]
 
     def first_n(self, n: int) -> list[tuple[str, float]]:
         """
