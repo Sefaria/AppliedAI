@@ -27,7 +27,7 @@ multidict==6.0.5
 mypy-extensions==1.0.0
 neo4j==5.22.0
 numpy==1.26.4
-openai==1.35.14
+openai==1.55.3
 orjson==3.10.3
 packaging==23.2
 pandas==2.2.2
