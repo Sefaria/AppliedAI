@@ -1906,7 +1906,7 @@ class SourceCollection:
             metadata_filter = construct_db_filter(self.matched_filters)
             self.debug["metadata_filter"] = metadata_filter
             self.logger.info(f"SessionID={self.session_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {self.session.scripture_query} and this metadata filter {metadata_filter}")
-            with ls.trace("Retrieval - Filtered", "retriever") as rt:
+            with ls.trace("Retrieval - Filtered", "retriever", metadata={"query": self.session.scripture_query, "filter": metadata_filter}) as rt:
                 self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
             self.retrieval_is_filtered = bool(self.retrieval_set)
@@ -1914,7 +1914,7 @@ class SourceCollection:
 
         # If no results are returned from semantic search with metadata filtering, do a simple semantic search
         if not self.retrieval_is_filtered:
-            with ls.trace("Retrieval - Unfiltered", "retriever") as rt:
+            with ls.trace("Retrieval - Unfiltered", "retriever", metadata={"query": self.session.scripture_query}) as rt:
                 self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
 
