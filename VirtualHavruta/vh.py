@@ -1901,6 +1901,7 @@ class SourceCollection:
 
     def retrieve_with_semantic_search(self):
         self.retrieval_is_filtered = False
+        # todo: get this vh var local
 
         if self.has_filters():
             metadata_filter = construct_db_filter(self.matched_filters)
@@ -1909,29 +1910,32 @@ class SourceCollection:
             with ls.trace("Retrieval - Filtered", "retriever", metadata={"query": self.session.scripture_query, "filter": metadata_filter}) as rt:
                 self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
+
             self.retrieval_is_filtered = bool(self.retrieval_set)
 
+            if self.retrieval_is_filtered:
+                with ls.trace("Selection - Filtered", "retriever") as rt:
+                    self.selected_primary_docs = self.select_reference(self.retrieval_set)
+                    rt.end(outputs={"output": self._convert_docs(self.selected_primary_docs)})
 
         # If no results are returned from semantic search with metadata filtering, do a simple semantic search
         if not self.retrieval_is_filtered:
+            primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.vh.primary_source_filter)
+
             with ls.trace("Retrieval - Unfiltered", "retriever", metadata={"query": self.session.scripture_query}) as rt:
                 self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
-
-
-        # todo: get this vh var local
-        primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.vh.primary_source_filter)
-
-        with ls.trace("Selection - Primary", "retriever") as rt:
-            primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
-            self.selected_primary_docs = self.select_reference(primary_docs)
-            rt.end(outputs={"output": self._convert_docs(self.selected_primary_docs)})
-
-        if not self.retrieval_is_filtered:
+            with ls.trace("Selection - Primary", "retriever") as rt:
+                primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
+                self.selected_primary_docs = self.select_reference(primary_docs)
+                rt.end(outputs={"output": self._convert_docs(self.selected_primary_docs)})
             with ls.trace("Selection - Secondary", "retriever") as rt:
                 secondary_docs = [d for d in self.retrieval_set if not primary_predicate(d)]
                 self.selected_secondary_docs = self.select_reference(secondary_docs)
                 rt.end(outputs={"output": self._convert_docs(self.selected_secondary_docs)})
+
+
+
 
     #todo: refactor graph_traversal_retriever
     def retrieve_with_graph(self):
