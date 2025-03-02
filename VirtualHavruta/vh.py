@@ -22,6 +22,7 @@ import requests
 import neo4j
 import langsmith as ls
 from langsmith import traceable
+from .ref import Ref, RefSet
 
 from VirtualHavruta.util import convert_node_to_doc, convert_vector_db_record_to_doc, \
     min_max_scaling, part_res, find_matched_filters, construct_db_filter, load_selected_keys, merge_topics
@@ -251,7 +252,7 @@ class VirtualHavruta:
                 res = ''
             return res, cb.total_tokens
 
-    def retrieve_docs_unfiltered(self, query: str):
+    def retrieve_docs_unfiltered(self, query: str) -> list[tuple[Document, float]]:
         '''
         Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
 
@@ -270,7 +271,7 @@ class VirtualHavruta:
         '''
         return self.neo4j_vector.similarity_search_with_relevance_scores(query, self.top_k)
 
-    def retrieve_docs_metadata_filtering(self, query: str, metadata_filter: dict | None=None):
+    def retrieve_docs_metadata_filtering(self, query: str, metadata_filter: dict | None=None) -> list[tuple[Document, float]]:
         '''
         Retrieves documents that match a specified query and filters them based on their metadata, using a similarity search.
 
@@ -1470,7 +1471,7 @@ class StudySession:
         if response.status_code == 200:
             data = response.json()
             parasha = data["calendar_items"][0]
-            self.situational_info += f"The current Parasha is {parasha["displayValue"]["en"]} ({parasha["displayValue"]["he"]}), which is found in {parasha["ref"]}.  "
+            self.situational_info += f"The current Parasha is {parasha['displayValue']['en']} ({parasha['displayValue']['he']}), which is found in {parasha['ref']}.  "
 
         self.logger.info(f"SessionID={self.session_id}. [SITUATIONAL INFO] Retrieved current situation: {self.situational_info}")
 
@@ -1899,9 +1900,29 @@ class SourceCollection:
           for d in ds
         ]
 
+    def deduplicate_docs(self, docs: list[tuple[Document, float]]) -> list[tuple[Document, float]]:
+        ref_map = {}
+        for doc, score in docs:
+            # get ref for each doc tuple
+            text_ref = doc.metadata.get("ref") or doc.metadata.get('url',"").replace("https://www.sefaria.org/", "")
+            if not text_ref:
+                continue
+            ref = Ref(text_ref)
+
+            # put ref: tuple pairs into ref_map dict
+            ref_map[ref.normal()] = (doc, score)
+
+        # deduplicate the refs
+        ref_objs = [Ref(ref) for ref in ref_map.keys()]
+        deduped_ref_objs = RefSet(ref_objs).deduplicate().as_list()
+
+        # pull the tuples back out of ref_map dict, and return them
+        return [ref_map[ref.normal()] for ref in deduped_ref_objs]
+
     def retrieve_with_semantic_search(self):
         self.retrieval_is_filtered = False
         # todo: get this vh var local
+        # todo:  retrieve_docs_metadata_filtering and retrieve_docs_unfiltered should be combined
 
         if self.has_filters():
             metadata_filter = construct_db_filter(self.matched_filters)
@@ -1912,6 +1933,7 @@ class SourceCollection:
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
 
             self.retrieval_is_filtered = bool(self.retrieval_set)
+            self.retrieval_set = self.deduplicate_docs(self.retrieval_set)
 
             if self.retrieval_is_filtered:
                 with ls.trace("Selection - Filtered", "retriever") as rt:
@@ -1925,6 +1947,9 @@ class SourceCollection:
             with ls.trace("Retrieval - Unfiltered", "retriever", metadata={"query": self.session.scripture_query}) as rt:
                 self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
+
+            self.retrieval_set = self.deduplicate_docs(self.retrieval_set)
+
             with ls.trace("Selection - Primary", "retriever") as rt:
                 primary_docs = [d for d in self.retrieval_set if primary_predicate(d)]
                 self.selected_primary_docs = self.select_reference(primary_docs)
