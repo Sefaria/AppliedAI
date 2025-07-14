@@ -252,48 +252,7 @@ class VirtualHavruta:
                 res = ''
             return res, cb.total_tokens
 
-    def retrieve_docs_unfiltered(self, query: str) -> list[tuple[Document, float]]:
-        '''
-        Retrieves documents that match a specified query and filters them based on whether they are primary or secondary sources, using a similarity search.
 
-        This function performs a similarity search based on the provided query and retrieves documents that either match the characteristics of primary or secondary sources as defined by a filter set.
-        The results are filtered by checking each document's metadata against a predefined set of source filters.
-        The function logs the process to ensure transparency and is equipped to handle errors related to invalid filter modes, raising a ValueError if necessary.
-
-        Parameters:
-        query (str): The query string used to search for relevant documents.
-
-        Returns:
-        retrieval_res: Two list of documents - primary and secondary sources.
-
-        Example:
-        primary_retrieval_result = vh.retrieve_docs(query, msgid, 'primary')
-        '''
-        return self.neo4j_vector.similarity_search_with_relevance_scores(query, self.top_k)
-
-    def retrieve_docs_metadata_filtering(self, query: str, metadata_filter: dict | None=None) -> list[tuple[Document, float]]:
-        '''
-        Retrieves documents that match a specified query and filters them based on their metadata, using a similarity search.
-
-        This function performs a similarity search based on the provided query and retrieves documents that match the metadata conditions as defined by a metadata_filter.
-        The results are filtered by applying the metadata filters during semantic search.
-        The function logs the process to ensure transparency.
-        
-        Parameters:
-        query (str): The query string used to search for relevant documents.
-        metadata_filter (dict): The metadata filter dictionary used to filter the search results during semantic search.
-        
-        Returns:
-        list: A list of documents that meet the criteria of the specified metadata filter.
-
-        Example:
-        p_retrieval_res = vh.retrieve_docs_metadata_filtering(query, msgid, metadata_filter)
-        '''
-        # Convert primary_source_filter to a set for efficient lookup
-        retrieved_res = self.neo4j_vector.similarity_search_with_relevance_scores(
-            query, self.top_k, filter=metadata_filter
-            )
-        return retrieved_res
 
     def retrieve_nodes_matching_linker_results(self, linker_results: list[dict], msg_id: str = '', filter_mode: str = 'primary',
                                                url_prefix: str = "https://www.sefaria.org/") -> list[Document]:
@@ -1319,6 +1278,33 @@ class VirtualHavruta:
         self.logger.info(f"MsgID={msg_id}. [CHUNK2NODE] Found chunk-corresponding node for {query_parameters}")
         return convert_node_to_doc(node)
 
+    def retrieve_docs(self, query: str, metadata_filter: dict | None = None) -> list[tuple[Document, float]]:
+        '''
+        Retrieves documents that match a specified query using similarity search, optionally filtering by metadata.
+
+        This function performs a similarity search based on the provided query and retrieves documents.
+        If a metadata_filter is provided, the results are filtered by applying the metadata filters during semantic search.
+        If no metadata_filter is provided, all documents matching the query are returned.
+        The function logs the process to ensure transparency.
+        
+        Parameters:
+        query (str): The query string used to search for relevant documents.
+        metadata_filter (dict, optional): The metadata filter dictionary used to filter the search results during semantic search. Defaults to None.
+        
+        Returns:
+        list: A list of tuples, each containing a document and its relevance score.
+
+        Example:
+        # Unfiltered search
+        retrieval_res = vh.retrieve_docs(query)
+        
+        # Filtered search
+        retrieval_res = vh.retrieve_docs(query, metadata_filter)
+        '''
+        return self.neo4j_vector.similarity_search_with_relevance_scores(
+            query, self.top_k, filter=metadata_filter
+        )
+
 
 class StudySession:
     def __init__(self, vh: VirtualHavruta, msgid: str = None, chat_callback: Optional[Callable] = None):
@@ -1922,14 +1908,13 @@ class SourceCollection:
     def retrieve_with_semantic_search(self):
         self.retrieval_is_filtered = False
         # todo: get this vh var local
-        # todo:  retrieve_docs_metadata_filtering and retrieve_docs_unfiltered should be combined
 
         if self.has_filters():
             metadata_filter = construct_db_filter(self.matched_filters)
             self.debug["metadata_filter"] = metadata_filter
             self.logger.info(f"SessionID={self.session_id}. [RETRIEVAL] Metadata filtering at work. Retrieving references using this query: {self.session.scripture_query} and this metadata filter {metadata_filter}")
             with ls.trace("Retrieval - Filtered", "retriever", metadata={"query": self.session.scripture_query, "filter": metadata_filter}) as rt:
-                self.retrieval_set = self.vh.retrieve_docs_metadata_filtering(self.session.scripture_query, metadata_filter)
+                self.retrieval_set = self.vh.retrieve_docs(self.session.scripture_query, metadata_filter)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
 
             self.retrieval_is_filtered = bool(self.retrieval_set)
@@ -1945,7 +1930,7 @@ class SourceCollection:
             primary_predicate = lambda doc: any(s in doc[0].metadata['source'] for s in self.vh.primary_source_filter)
 
             with ls.trace("Retrieval - Unfiltered", "retriever", metadata={"query": self.session.scripture_query}) as rt:
-                self.retrieval_set = self.vh.retrieve_docs_unfiltered(self.session.scripture_query)
+                self.retrieval_set = self.vh.retrieve_docs(self.session.scripture_query)
                 rt.end(outputs={"output": self._convert_docs(self.retrieval_set)})
 
             self.retrieval_set = self.deduplicate_docs(self.retrieval_set)
