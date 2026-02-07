@@ -159,11 +159,23 @@ class VirtualHavruta:
             if model_name.startswith(('main', 'support')):
                 model_kwargs = {"response_format": {"type": "json_object"}} if model_name.endswith('_json') else {}
                 model_key = model_name.replace('_json', '')  # Removes the '_json' suffix for lookup in model_api
-                setattr(self, model_name, ChatOpenAI(
-                    temperature=self.model_api.get(f"{model_key}_temperature", None),
-                    model=self.model_api.get(model_key, None),
-                    model_kwargs=model_kwargs
-                ))
+                current_model = self.model_api.get(model_key, None)
+
+                if current_model and 'gpt-5' in current_model:
+                    # GPT-5 models: use reasoning instead of temperature
+                    reasoning_effort = self.model_api.get(f"{model_key}_reasoning_effort", "minimal")
+                    setattr(self, model_name, ChatOpenAI(
+                        model=current_model,
+                        reasoning={"effort": reasoning_effort},
+                        model_kwargs=model_kwargs
+                    ))
+                else:
+                    # Legacy models: use temperature
+                    setattr(self, model_name, ChatOpenAI(
+                        temperature=self.model_api.get(f"{model_key}_temperature", None),
+                        model=current_model,
+                        model_kwargs=model_kwargs
+                    ))
                 self.initialize_llm_chains(getattr(self, model_name), suffixes)
 
     def initialize_llm_chains(self, model, suffixes):
