@@ -14,7 +14,7 @@ from langchain_core.documents import Document
 from langchain_community.vectorstores import Neo4jVector
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain.chains import LLMChain
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain_community.callbacks import get_openai_callback
