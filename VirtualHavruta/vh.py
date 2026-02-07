@@ -71,13 +71,14 @@ class VirtualHavruta:
         self.config_emb_db = self.config['database']['embed']
         self.config_kg_db = self.config['database']['kg']
         
-        # Initialize Neo4j vector index 
+        # Initialize Neo4j vector index
         self.neo4j_vector = Neo4jVector.from_existing_index(
             OpenAIEmbeddings(model=self.model_api['embedding_model']),
-            index_name="index",
+            index_name=self.config_emb_db.get('index_name', 'index'),
             url=self.config_emb_db['url'],
             username=self.config_emb_db['username'],
             password=self.config_emb_db['password'],
+            database=self.config_emb_db.get('database', 'neo4j'),
         )
         self.top_k = self.config_emb_db['top_k']
 
